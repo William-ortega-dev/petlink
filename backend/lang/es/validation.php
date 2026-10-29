@@ -1,0 +1,42 @@
+<?php
+
+return [
+    'accepted' => 'El campo :attribute debe aceptarse.',
+    'after' => 'El campo :attribute debe ser una fecha posterior a :date.',
+    'after_or_equal' => 'El campo :attribute debe ser una fecha igual o posterior a :date.',
+    'before' => 'El campo :attribute debe ser una fecha anterior a :date.',
+    'before_or_equal' => 'El campo :attribute debe ser una fecha igual o anterior a :date.',
+    'boolean' => 'El campo :attribute debe ser verdadero o falso.',
+    'confirmed' => 'La confirmación de :attribute no coincide.',
+    'date' => 'El campo :attribute no contiene una fecha válida.',
+    'email' => 'El campo :attribute debe ser un correo electrónico válido.',
+    'exists' => 'El valor seleccionado para :attribute no es válido.',
+    'image' => 'El campo :attribute debe ser una imagen.',
+    'in' => 'El valor seleccionado para :attribute no es válido.',
+    'integer' => 'El campo :attribute debe ser un número entero.',
+    'max' => [
+        'numeric' => 'El campo :attribute no debe ser mayor que :max.',
+        'file' => 'El archivo :attribute no debe superar :max kilobytes.',
+        'string' => 'El campo :attribute no debe tener más de :max caracteres.',
+        'array' => 'El campo :attribute no debe contener más de :max elementos.',
+    ],
+    'min' => [
+        'numeric' => 'El campo :attribute debe ser al menos :min.',
+        'file' => 'El archivo :attribute debe tener al menos :min kilobytes.',
+        'string' => 'El campo :attribute debe tener al menos :min caracteres.',
+        'array' => 'El campo :attribute debe contener al menos :min elementos.',
+    ],
+    'mimes' => 'El campo :attribute debe ser un archivo de tipo: :values.',
+    'not_in' => 'El valor seleccionado para :attribute no es válido.',
+    'numeric' => 'El campo :attribute debe ser un número.',
+    'required' => 'El campo :attribute es obligatorio.',
+    'required_if' => 'El campo :attribute es obligatorio cuando :other es :value.',
+    'string' => 'El campo :attribute debe ser texto.',
+    'unique' => 'El valor de :attribute ya está registrado.',
+    'attributes' => [
+        'name' => 'nombre', 'email' => 'correo electrónico', 'password' => 'contraseña', 'telefono' => 'teléfono',
+        'nombre' => 'nombre', 'especie_id' => 'especie', 'raza_id' => 'raza', 'estado_id' => 'estado',
+        'sexo' => 'sexo', 'tamano' => 'tamaño', 'foto' => 'fotografía', 'fecha_registro' => 'fecha de registro',
+        'importe_cop' => 'importe en pesos colombianos', 'programada_en' => 'fecha de la cita',
+    ],
+];
