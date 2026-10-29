@@ -2,7 +2,7 @@
 
 ## Estado
 
-El repositorio está preparado para un frontend React estático en Vercel y una API Laravel en Docker/Render. La base PostgreSQL y las fotografías se proponen en Supabase. No se crearon recursos externos ni se publicó la aplicación porque hacen falta acceso a las cuentas del proveedor, valores privados del proyecto y una decisión explícita para subir estos nuevos commits al remoto.
+El repositorio está preparado para un frontend React estático en Vercel y una API Laravel en Docker/Render. La base PostgreSQL y las fotografías se proponen en Supabase. La rama pública `release/petlink-sanitized` ya está en GitHub. No se crearon recursos externos ni se publicó la aplicación porque hacen falta iniciar sesión en las cuentas de los proveedores y configurar sus valores privados.
 
 La configuración no ejecuta migraciones ni seeders automáticamente por defecto. Tampoco crea cuentas de demostración en producción. El inicio de sesión de cinco roles en una demo pública requiere un plan de cuentas de presentación autorizado y no reutiliza las contraseñas locales conocidas.
 
@@ -28,9 +28,9 @@ Ningún plan gratuito implica una garantía de continuidad o respaldos apropiado
 
 ## Procedimiento manual
 
-### 1. Publica los cambios del repositorio
+### 1. Conecta la rama publicada
 
-Los commits de esta actualización deben estar en GitHub antes de conectar Vercel y Render al repositorio. El remoto existente es público. Sube solo después de revisar y autorizar expresamente el `push`; este trabajo no lo hace automáticamente.
+En Render y Vercel conecta el repositorio público `William-ortega-dev/petlink` y selecciona la rama `release/petlink-sanitized`. No cambies la rama predeterminada de GitHub ni mezcles esta rama en `main` para hacer la demo.
 
 ### 2. Crea PostgreSQL y almacenamiento en Supabase
 
