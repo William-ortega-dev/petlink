@@ -8,8 +8,9 @@ use App\Models\Mascota;
 use App\Models\Refugio;
 use App\Models\Raza;
 use App\Models\FotoMascota;
+use App\Support\PetPhotoStorage;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 
 class PetController extends Controller
@@ -23,7 +24,13 @@ class PetController extends Controller
         if (! $user->isAdministrator()) {
             $query->where('responsable_id', $user->id);
         }
-        return response()->json($query->paginate(20));
+        $page = $query->paginate(20);
+        $photoStorage = app(PetPhotoStorage::class);
+        $page->getCollection()->each(fn (Mascota $pet) => $pet->fotos->each(
+            fn (FotoMascota $photo) => $photo->setAttribute('url', $photoStorage->url($photo->ruta)),
+        ));
+
+        return response()->json($page);
     }
 
     public function index(Request $request)
@@ -123,19 +130,62 @@ class PetController extends Controller
             'texto_alternativo' => ['nullable', 'string', 'max:180'],
             'principal' => ['sometimes', 'boolean'],
         ]);
-        $path = $request->file('foto')->store('mascotas/'.$mascota->id, 'public');
+        $photoStorage = app(PetPhotoStorage::class);
+        $path = $photoStorage->store($request->file('foto'), $mascota->id);
+        abort_unless($path, 503, 'No fue posible guardar la fotografía. Intenta de nuevo.');
         $makePrimary = filter_var($data['principal'] ?? false, FILTER_VALIDATE_BOOLEAN);
-        if ($makePrimary) {
-            $mascota->fotos()->update(['principal' => false]);
+        try {
+            $photo = DB::transaction(function () use ($mascota, $path, $data, $makePrimary) {
+                $lockedPet = Mascota::whereKey($mascota->id)->lockForUpdate()->firstOrFail();
+                if ($makePrimary) {
+                    $lockedPet->fotos()->update(['principal' => false]);
+                }
+                return $lockedPet->fotos()->create([
+                    'ruta' => $path,
+                    'texto_alternativo' => $data['texto_alternativo'] ?? null,
+                    'principal' => $makePrimary || ! $lockedPet->fotos()->exists(),
+                    'orden' => (int) $lockedPet->fotos()->max('orden') + 1,
+                ]);
+            });
+        } catch (\Throwable $exception) {
+            $photoStorage->delete($path);
+            throw $exception;
         }
-        $photo = FotoMascota::create([
-            'mascota_id' => $mascota->id,
-            'ruta' => $path,
-            'texto_alternativo' => $data['texto_alternativo'] ?? null,
-            'principal' => $makePrimary || ! $mascota->fotos()->exists(),
-            'orden' => (int) $mascota->fotos()->max('orden') + 1,
-        ]);
-        return response()->json(['foto' => ['id' => $photo->id, 'url' => Storage::disk('public')->url($photo->ruta), 'principal' => $photo->principal]], 201);
+        return response()->json(['foto' => ['id' => $photo->id, 'url' => $photoStorage->url($photo->ruta), 'principal' => $photo->principal]], 201);
+    }
+
+    public function setPrimaryPhoto(Request $request, Mascota $mascota, int $foto)
+    {
+        $this->authorize('update', $mascota);
+        abort_if($mascota->adopcion()->exists(), 409, 'Las fotografías de una mascota adoptada no se pueden modificar.');
+        $photo = $mascota->fotos()->whereKey($foto)->firstOrFail();
+
+        DB::transaction(function () use ($mascota, $photo) {
+            Mascota::whereKey($mascota->id)->lockForUpdate()->firstOrFail();
+            $mascota->fotos()->update(['principal' => false]);
+            $photo->update(['principal' => true]);
+        });
+
+        return response()->json(['message' => 'Fotografía principal actualizada.']);
+    }
+
+    public function deletePhoto(Request $request, Mascota $mascota, int $foto)
+    {
+        $this->authorize('update', $mascota);
+        abort_if($mascota->adopcion()->exists(), 409, 'Las fotografías de una mascota adoptada no se pueden modificar.');
+        $photo = $mascota->fotos()->whereKey($foto)->firstOrFail();
+        $photoStorage = app(PetPhotoStorage::class);
+
+        if (! $photoStorage->delete($photo->ruta)) {
+            abort(503, 'No fue posible eliminar el archivo de fotografía.');
+        }
+        $wasPrimary = $photo->principal;
+        $photo->delete();
+        if ($wasPrimary) {
+            $mascota->fotos()->orderBy('orden')->first()?->update(['principal' => true]);
+        }
+
+        return response()->json(['message' => 'Fotografía eliminada.']);
     }
 
     private function assertBreedMatchesSpecies(?int $breedId, int $speciesId): void
@@ -147,8 +197,9 @@ class PetController extends Controller
 
     private function presentPet(Mascota $pet, $publication = null, bool $includePrivate = false): array
     {
+        $photoStorage = app(PetPhotoStorage::class);
         $mainPhoto = $pet->fotos->firstWhere('principal', true) ?? $pet->fotos->first();
-        $photoUrl = $mainPhoto ? Storage::disk('public')->url($mainPhoto->ruta) : null;
+        $photoUrl = $mainPhoto ? $photoStorage->url($mainPhoto->ruta) : null;
         return [
             'id' => $pet->id,
             'publicacion_id' => $publication?->id,
@@ -161,7 +212,7 @@ class PetController extends Controller
             'descripcion' => $pet->descripcion,
             'estado' => $pet->estado,
             'fotografia' => $photoUrl,
-            'fotos' => $pet->fotos->map(fn ($photo) => ['id' => $photo->id, 'url' => Storage::disk('public')->url($photo->ruta), 'texto_alternativo' => $photo->texto_alternativo, 'principal' => $photo->principal])->values(),
+            'fotos' => $pet->fotos->map(fn ($photo) => ['id' => $photo->id, 'url' => $photoStorage->url($photo->ruta), 'texto_alternativo' => $photo->texto_alternativo, 'principal' => $photo->principal])->values(),
             'refugio' => $pet->refugio ? ['nombre' => $pet->refugio->nombre, 'correo_contacto' => $pet->refugio->correo_contacto, 'telefono_contacto' => $pet->refugio->telefono_contacto, 'municipio' => $pet->refugio->direccion?->municipio, 'departamento' => $pet->refugio->direccion?->departamento] : null,
             'responsable' => $pet->responsable?->name,
             'notas_salud' => $includePrivate ? $pet->notas_salud : null,

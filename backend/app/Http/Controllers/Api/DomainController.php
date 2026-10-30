@@ -16,6 +16,7 @@ use App\Models\SeguimientoAdopcion;
 use App\Models\User;
 use App\Models\Vacuna;
 use App\Models\Veterinario;
+use App\Notifications\PetLinkNotification;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -26,6 +27,7 @@ class DomainController extends Controller
     public function appointments(Request $request)
     {
         $user = $request->user();
+        abort_unless($user->isRole('Administrador', 'Veterinario', 'Adoptante', 'Refugio'), 403);
         $query = CitaVeterinaria::with(['mascota:id,nombre', 'veterinario.usuario:id,name']);
         if ($user->isRole('Veterinario')) {
             abort_unless($user->veterinario, 403, 'No hay un perfil veterinario asociado a esta cuenta.');
@@ -75,6 +77,12 @@ class DomainController extends Controller
                 'motivo' => $data['motivo'] ?? null,
             ]);
         });
+        $appointment->load('veterinario.usuario')->veterinario?->usuario?->notify(new PetLinkNotification(
+            'Nueva cita veterinaria',
+            'Se solicitó una cita para '.$pet->nombre.'.',
+            '/panel#agenda-veterinaria',
+            'cita.solicitada',
+        ));
         return response()->json(['cita' => $appointment->load(['mascota:id,nombre', 'veterinario.usuario:id,name'])], 201);
     }
 
@@ -90,28 +98,30 @@ class DomainController extends Controller
             'duracion_minutos' => ['sometimes', 'integer', 'min:15', 'max:180'],
             'motivo' => ['sometimes', 'nullable', 'string', 'max:180'],
         ]);
-        if (isset($data['estado']) && ! ($user->isAdministrator() || $isVet) && $data['estado'] !== 'cancelada') {
-            abort(403);
-        }
-        if (isset($data['estado'])) {
-            $transitions = [
-                'programada' => ['confirmada', 'cancelada', 'realizada'],
-                'confirmada' => ['cancelada', 'realizada'],
-            ];
-            abort_unless(in_array($data['estado'], $transitions[$cita->estado] ?? [], true), 409, 'La cita ya no permite esa transición.');
-        }
-        if ((isset($data['programada_en']) || isset($data['duracion_minutos'])) && ! ($user->isAdministrator() || $isVet || $cita->solicitada_por === $user->id)) {
-            abort(403);
-        }
-        if (isset($data['programada_en']) || isset($data['duracion_minutos'])) {
-            abort_unless(in_array($cita->estado, ['programada', 'confirmada'], true), 409, 'La cita ya no se puede reprogramar.');
-            $data = DB::transaction(function () use ($data, $cita) {
-                $veterinarian = Veterinario::whereKey($cita->veterinario_id)->lockForUpdate()->firstOrFail();
-                $start = isset($data['programada_en']) ? Carbon::parse($data['programada_en']) : $cita->programada_en;
-                $duration = (int) ($data['duracion_minutos'] ?? $cita->duracion_minutos);
+        $updated = DB::transaction(function () use ($request, $cita, $data, $user) {
+            $lockedAppointment = CitaVeterinaria::whereKey($cita->id)->lockForUpdate()->firstOrFail();
+            $isAssignedVet = $user->isRole('Veterinario') && $user->veterinario?->id === $lockedAppointment->veterinario_id;
+            abort_unless($user->isAdministrator() || $isAssignedVet || $lockedAppointment->solicitada_por === $user->id, 403);
+
+            if (isset($data['estado']) && ! ($user->isAdministrator() || $isAssignedVet) && $data['estado'] !== 'cancelada') {
+                abort(403);
+            }
+            abort_if(isset($data['notas']) && ! ($user->isAdministrator() || $isAssignedVet), 403, 'Solo el veterinario asignado puede registrar notas clínicas.');
+            if (isset($data['estado'])) {
+                $transitions = [
+                    'programada' => ['confirmada', 'cancelada', 'realizada'],
+                    'confirmada' => ['cancelada', 'realizada'],
+                ];
+                abort_unless(in_array($data['estado'], $transitions[$lockedAppointment->estado] ?? [], true), 409, 'La cita ya no permite esa transición.');
+            }
+            if (isset($data['programada_en']) || isset($data['duracion_minutos'])) {
+                abort_unless(in_array($lockedAppointment->estado, ['programada', 'confirmada'], true), 409, 'La cita ya no se puede reprogramar.');
+                $veterinarian = Veterinario::whereKey($lockedAppointment->veterinario_id)->lockForUpdate()->firstOrFail();
+                $start = isset($data['programada_en']) ? Carbon::parse($data['programada_en']) : $lockedAppointment->programada_en;
+                $duration = (int) ($data['duracion_minutos'] ?? $lockedAppointment->duracion_minutos);
                 $end = $start->copy()->addMinutes($duration);
                 $conflict = CitaVeterinaria::where('veterinario_id', $veterinarian->id)
-                    ->whereKeyNot($cita->id)
+                    ->whereKeyNot($lockedAppointment->id)
                     ->whereIn('estado', ['programada', 'confirmada'])
                     ->where('programada_en', '<', $end)
                     ->whereRaw("programada_en + (duracion_minutos * interval '1 minute') > ?", [$start])
@@ -119,11 +129,26 @@ class DomainController extends Controller
                 abort_if($conflict, 409, 'El veterinario ya tiene una cita en ese horario.');
                 $data['programada_en'] = $start;
                 $data['duracion_minutos'] = $duration;
-                return $data;
-            });
-        }
-        $cita->update($data);
-        return response()->json(['cita' => $cita->fresh()->load(['mascota:id,nombre', 'veterinario.usuario:id,name'])]);
+            }
+
+            $lockedAppointment->update($data);
+            if ($data !== []) {
+                $lockedAppointment->load(['mascota:id,nombre', 'veterinario.usuario', 'solicitante']);
+                $target = $lockedAppointment->solicitada_por === $user->id
+                    ? $lockedAppointment->veterinario?->usuario
+                    : $lockedAppointment->solicitante;
+                $target?->notify(new PetLinkNotification(
+                    'Cita veterinaria actualizada',
+                    'La cita de '.$lockedAppointment->mascota?->nombre.' fue actualizada. Estado: '.$lockedAppointment->estado.'.',
+                    $target?->isRole('Veterinario') ? '/panel#agenda-veterinaria' : '/panel#mis-citas',
+                    'cita.actualizada',
+                ));
+            }
+
+            return $lockedAppointment->fresh()->load(['mascota:id,nombre', 'veterinario.usuario:id,name']);
+        });
+
+        return response()->json(['cita' => $updated]);
     }
 
     public function medicalHistory(Request $request, Mascota $mascota)
@@ -148,7 +173,7 @@ class DomainController extends Controller
         abort_unless($user->isAdministrator() || ($user->isRole('Veterinario') && $user->veterinario), 403);
         $vetId = $user->isAdministrator() ? null : $user->veterinario->id;
         if ($vetId) {
-            abort_unless(CitaVeterinaria::where('mascota_id', $data['mascota_id'])->where('veterinario_id', $vetId)->exists(), 403, 'El veterinario no tiene una cita asociada a esta mascota.');
+            abort_unless(CitaVeterinaria::where('mascota_id', $data['mascota_id'])->where('veterinario_id', $vetId)->whereIn('estado', ['confirmada', 'realizada'])->exists(), 403, 'El veterinario necesita una cita confirmada o realizada para esta mascota.');
         }
         $record = HistorialMedico::create($data + ['registrado_por' => $user->id, 'veterinario_id' => $vetId]);
         return response()->json(['registro' => $record], 201);
@@ -184,7 +209,7 @@ class DomainController extends Controller
         abort_unless($user->isAdministrator() || ($user->isRole('Veterinario') && $user->veterinario), 403);
         $vetId = $user->isAdministrator() ? null : $user->veterinario->id;
         if ($vetId) {
-            abort_unless(CitaVeterinaria::where('mascota_id', $data['mascota_id'])->where('veterinario_id', $vetId)->exists(), 403);
+            abort_unless(CitaVeterinaria::where('mascota_id', $data['mascota_id'])->where('veterinario_id', $vetId)->whereIn('estado', ['confirmada', 'realizada'])->exists(), 403);
         }
         $application = MascotaVacuna::create($data + ['veterinario_id' => $vetId]);
         return response()->json(['vacuna_aplicada' => $application->load('vacuna:id,nombre')], 201);
@@ -319,6 +344,7 @@ class DomainController extends Controller
 
     public function storeDonation(Request $request)
     {
+        abort_unless($request->user()->isRole('Adoptante', 'Administrador'), 403);
         $data = $request->validate([
             'tipo_aporte' => ['required', Rule::in(['dinero', 'especie', 'servicio'])],
             'importe_cop' => ['required_if:tipo_aporte,dinero', 'nullable', 'numeric', 'min:0.01', 'max:999999999999.99'],
@@ -375,7 +401,10 @@ class DomainController extends Controller
             return true;
         }
         if ($user->isRole('Veterinario') && $user->veterinario) {
-            return CitaVeterinaria::where('mascota_id', $pet->id)->where('veterinario_id', $user->veterinario->id)->exists();
+            return CitaVeterinaria::where('mascota_id', $pet->id)
+                ->where('veterinario_id', $user->veterinario->id)
+                ->whereIn('estado', ['programada', 'confirmada', 'realizada'])
+                ->exists();
         }
         return false;
     }

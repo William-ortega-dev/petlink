@@ -1,0 +1,51 @@
+services:
+  - type: web
+    name: petlink-api
+    runtime: docker
+    plan: free
+    rootDir: backend
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /api/health
+    envVars:
+      - key: APP_ENV
+        value: production
+      - key: APP_DEBUG
+        value: "false"
+      - key: APP_KEY
+        sync: false
+      - key: APP_URL
+        sync: false
+      - key: FRONTEND_URL
+        sync: false
+      - key: DB_CONNECTION
+        value: pgsql
+      - key: DB_HOST
+        sync: false
+      - key: DB_PORT
+        value: "5432"
+      - key: DB_DATABASE
+        sync: false
+      - key: DB_USERNAME
+        sync: false
+      - key: DB_PASSWORD
+        sync: false
+      - key: DB_SSLMODE
+        value: require
+      - key: PETLINK_DEMO_ACCOUNTS
+        value: "false"
+      - key: PET_PHOTO_DISK
+        value: supabase
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_STORAGE_BUCKET
+        value: petlink-assets
+      - key: SUPABASE_STORAGE_KEY
+        sync: false
+      - key: MAIL_MAILER
+        value: log
+      - key: RUN_MIGRATIONS
+        value: "false"
+      - key: RUN_SEEDERS
+        value: "false"
+      - key: PETLINK_MIGRATION_TARGET
+        sync: false

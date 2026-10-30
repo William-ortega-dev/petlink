@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Link, Navigate, Route, Routes, useNavigate, useParams } from 'react-router-dom'
+import { Link, Navigate, Route, Routes, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import api, { messageFromError } from './api'
 import { useAuth } from './AuthContext'
 import PetCard from './components/PetCard'
@@ -190,6 +190,13 @@ function AuthPage({ mode }) {
   const [form, setForm] = useState({ name: '', email: '', telefono: '', password: '', password_confirmation: '' })
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
+  const demoAccounts = [
+    ['Administrador', 'admin@petlink.test', import.meta.env.VITE_DEMO_PASSWORD_ADMIN],
+    ['Adoptante', 'adoptante@petlink.test', import.meta.env.VITE_DEMO_PASSWORD_ADOPTER],
+    ['Refugio', 'refugio@petlink.test', import.meta.env.VITE_DEMO_PASSWORD_SHELTER],
+    ['Veterinario', 'veterinario@petlink.test', import.meta.env.VITE_DEMO_PASSWORD_VETERINARIAN],
+    ['Hogar temporal', 'hogar@petlink.test', import.meta.env.VITE_DEMO_PASSWORD_FOSTER],
+  ].filter(([, , password]) => typeof password === 'string' && password.length >= 16)
   if (user) return <Navigate to="/panel" replace />
   function change(event) { setForm((current) => ({ ...current, [event.target.name]: event.target.value })) }
   async function submit(event) {
@@ -210,12 +217,37 @@ function AuthPage({ mode }) {
         <Field label="Correo electrónico" name="email" type="email" value={form.email} onChange={change} required autoComplete="email" />
         <Field label="Contraseña" name="password" type="password" value={form.password} onChange={change} required minLength={isRegister ? 10 : 1} autoComplete={isRegister ? 'new-password' : 'current-password'} />
         {isRegister && <Field label="Confirmar contraseña" name="password_confirmation" type="password" value={form.password_confirmation} onChange={change} required minLength={10} autoComplete="new-password" />}
+        {!isRegister && import.meta.env.DEV && <details className="demo-login"><summary>Rellenar una cuenta de demostración</summary><div className="demo-login-list">{demoAccounts.map(([label, email, password]) => <button type="button" className="btn btn-sm btn-outline-success" key={email} onClick={() => { setError(''); setForm((current) => ({ ...current, email, password })) }}>{label}</button>)}</div><small>Se inicia sesión mediante este formulario; las cuentas solo se habilitan en desarrollo.</small></details>}
         {error && <div className="alert alert-danger py-2">{error}</div>}
         <button className="btn btn-success btn-lg rounded-pill w-100 mt-2" disabled={busy}>{busy ? 'Un momento…' : isRegister ? 'Crear mi cuenta' : 'Iniciar sesión'}</button>
       </form>
       <p className="auth-switch">{isRegister ? '¿Ya tienes cuenta?' : '¿Primera vez en PetLink?'} <Link to={isRegister ? '/iniciar-sesion' : '/registro'}>{isRegister ? 'Inicia sesión' : 'Regístrate'}</Link></p>
+      {!isRegister && <p className="auth-switch mt-2"><Link to="/recuperar-contrasena">¿Olvidaste tu contraseña?</Link></p>}
     </div>
   </main>
+}
+
+function PasswordRecoveryPage() {
+  const [searchParams] = useSearchParams()
+  const token = searchParams.get('token') || ''
+  const [form, setForm] = useState({ email: searchParams.get('email') || '', password: '', password_confirmation: '' })
+  const [message, setMessage] = useState('')
+  const [error, setError] = useState('')
+  const [busy, setBusy] = useState(false)
+  const resetting = Boolean(token)
+
+  async function submit(event) {
+    event.preventDefault(); setBusy(true); setMessage(''); setError('')
+    try {
+      const response = resetting
+        ? await api.post('/auth/restablecer-contrasena', { ...form, token })
+        : await api.post('/auth/recuperar-contrasena', { email: form.email })
+      setMessage(response.data.message)
+      if (resetting) setForm((current) => ({ ...current, password: '', password_confirmation: '' }))
+    } catch (err) { setError(messageFromError(err)) } finally { setBusy(false) }
+  }
+
+  return <main className="container auth-layout"><div className="auth-aside"><span className="eyebrow">PetLink</span><h1>Recupera el acceso a tu cuenta.</h1><p>Te enviaremos instrucciones al correo registrado para cambiar tu contraseña de forma segura.</p><div className="auth-paw">🐾</div></div><div className="auth-card"><h2>{resetting ? 'Crear una contraseña nueva' : 'Recuperar contraseña'}</h2><form onSubmit={submit} className="vstack gap-3 mt-4"><Field label="Correo electrónico" name="recovery-email" type="email" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} required autoComplete="email" />{resetting && <><Field label="Nueva contraseña" name="recovery-password" type="password" value={form.password} onChange={(event) => setForm({ ...form, password: event.target.value })} required minLength={10} autoComplete="new-password" /><Field label="Confirmar contraseña" name="recovery-password-confirm" type="password" value={form.password_confirmation} onChange={(event) => setForm({ ...form, password_confirmation: event.target.value })} required minLength={10} autoComplete="new-password" /></>}{message && <div className="alert alert-success" role="status">{message}</div>}{error && <div className="alert alert-danger" role="alert">{error}</div>}<button className="btn btn-success rounded-pill" disabled={busy}>{busy ? 'Un momento…' : resetting ? 'Restablecer contraseña' : 'Enviar instrucciones'}</button></form><p className="auth-switch"><Link to="/iniciar-sesion">Volver a iniciar sesión</Link></p></div></main>
 }
 
 function Field({ label, name, type = 'text', value, onChange, ...props }) {
@@ -223,14 +255,20 @@ function Field({ label, name, type = 'text', value, onChange, ...props }) {
 }
 
 function DashboardPage() {
-  const { user, refreshUser } = useAuth()
+  const { user, refreshUser, logout } = useAuth()
   const [payload, setPayload] = useState({})
   const [modules, setModules] = useState({})
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
+  const [passwordForm, setPasswordForm] = useState({ current_password: '', password: '', password_confirmation: '' })
   const [profile, setProfile] = useState({ name: user.name || '', email: user.email || '', telefono: user.telefono || '' })
   const role = user.role?.nombre
+  function announce(message) {
+    if (!message) { setNotice(null); return }
+    const successful = /^(Perfil actualizado|Estado de mascota actualizado|Publicación actualizada|Catálogo actualizado|Mascota registrada|Asignación guardada|Cita solicitada|Donación registrada|Cita marcada como realizada|Registro médico guardado|Vacuna aplicada y registrada|Cita reprogramada|Cita cancelada|Acogida cerrada|Hogar temporal registrado|Contraseña actualizada|Fotografía)/i.test(message)
+    setNotice({ message, type: successful && !/no se pudo|error/i.test(message) ? 'success' : 'danger' })
+  }
   const load = useCallback(async () => {
     setLoading(true)
     setError('')
@@ -238,6 +276,9 @@ function DashboardPage() {
       const { data } = await api.get('/panel')
       setPayload(data.dashboard)
       const next = {}
+      const { data: notifications } = await api.get('/notificaciones')
+      next.notifications = notifications.data || []
+      next.unreadCount = notifications.unread_count || 0
       if (role === 'Administrador' || role === 'Refugio') {
         const responses = await Promise.allSettled([api.get('/mis-mascotas'), api.get('/solicitudes/para-revisar'), api.get('/hogares-temporales'), api.get('/asignaciones-hogar')])
         if (responses[0].status === 'fulfilled') next.pets = responses[0].value.data.data || []
@@ -246,9 +287,10 @@ function DashboardPage() {
         if (responses[3].status === 'fulfilled') next.assignments = responses[3].value.data.data || []
       }
       if (role === 'Administrador') {
-        const responses = await Promise.allSettled([api.get('/usuarios'), api.get('/roles')])
+        const responses = await Promise.allSettled([api.get('/usuarios'), api.get('/roles'), api.get('/auditoria')])
         if (responses[0].status === 'fulfilled') next.users = responses[0].value.data.data || []
         if (responses[1].status === 'fulfilled') next.roles = responses[1].value.data.data || []
+        if (responses[2].status === 'fulfilled') next.auditLogs = responses[2].value.data.data || []
       } else if (role === 'Adoptante') {
         const responses = await Promise.allSettled([api.get('/mis-solicitudes'), api.get('/adopciones'), api.get('/seguimientos'), api.get('/citas'), api.get('/mascotas', { params: { per_page: 30 } }), api.get('/veterinarios')])
         if (responses[0].status === 'fulfilled') next.requests = responses[0].value.data.data || []
@@ -275,30 +317,106 @@ function DashboardPage() {
   useEffect(() => { load() }, [load])
   async function saveProfile(event) {
     event.preventDefault()
-    setNotice('')
-    try { await api.put('/auth/perfil', profile); await refreshUser(); setNotice('Perfil actualizado.') } catch (err) { setNotice(messageFromError(err)) }
+    announce('')
+    try { await api.put('/auth/perfil', profile); await refreshUser(); announce('Perfil actualizado.') } catch (err) { announce(messageFromError(err)) }
   }
   if (loading) return <Loading />
   return <main className="container page-container dashboard-page">
-    <div className="dashboard-heading"><div><span className="eyebrow">Panel {role || ''}</span><h1>Hola, {user.name.split(' ')[0]}</h1><p>Administra tu actividad y continúa tu historia en PetLink.</p></div><span className="user-avatar">{user.name.charAt(0).toUpperCase()}</span></div>
-    {error && <div className="alert alert-danger">{error}</div>}{notice && <div className="alert alert-success">{notice}</div>}
-    {payload.stats && <div className="row g-3 stats-row">{Object.entries(payload.stats).map(([label, value]) => <div className="col-6 col-xl-3" key={label}><div className="stat-card"><small>{label.replaceAll('_', ' ')}</small><strong>{typeof value === 'number' ? value.toLocaleString('es-CO') : value}</strong></div></div>)}</div>}
-    <section className="dashboard-section profile-section"><div className="section-title"><div><span className="eyebrow">Tu cuenta</span><h2>Mi perfil</h2></div></div><form className="row g-3 align-items-end" onSubmit={saveProfile}><div className="col-md-4"><Field label="Nombre" name="profile-name" value={profile.name} onChange={(e) => setProfile({ ...profile, name: e.target.value })} required /></div><div className="col-md-4"><Field label="Correo" name="profile-email" type="email" value={profile.email} onChange={(e) => setProfile({ ...profile, email: e.target.value })} required /></div><div className="col-md-3"><Field label="Teléfono" name="profile-phone" value={profile.telefono || ''} onChange={(e) => setProfile({ ...profile, telefono: e.target.value })} /></div><div className="col-md-1"><button className="btn btn-success w-100" aria-label="Guardar perfil">Guardar</button></div></form></section>
+    <div className="dashboard-heading"><div><span className="eyebrow">Panel de {role || 'usuario'}</span><h1>Hola, {user.name.split(' ')[0]}</h1><p>Administra tu actividad y continúa tu historia en PetLink.</p><span className="role-badge">{role}</span></div><span className="user-avatar" aria-label={'Usuario ' + user.name}>{user.name.charAt(0).toUpperCase()}</span></div>
+    {error && <div className="alert alert-danger">{error}</div>}{notice && <div className={'alert alert-' + notice.type} role={notice.type === 'danger' ? 'alert' : 'status'}>{notice.message}</div>}
+    {payload.stats && <div id="resumen" className="row g-3 stats-row">{Object.entries(payload.stats).map(([label, value]) => <div className="col-6 col-xl-3" key={label}><div className="stat-card"><small>{label.replaceAll('_', ' ')}</small><strong>{typeof value === 'number' ? value.toLocaleString('es-CO') : value || '—'}</strong></div></div>)}</div>}
+    <DashboardNav role={role} />
+    <NotificationPanel items={modules.notifications || []} unreadCount={modules.unreadCount || 0} onDone={load} />
+    <section id="mi-perfil" className="dashboard-section profile-section"><div className="section-title"><div><span className="eyebrow">Tu cuenta · {role}</span><h2>Mi perfil</h2></div></div><form className="row g-3 align-items-end" onSubmit={saveProfile}><div className="col-md-4"><Field label="Nombre" name="profile-name" value={profile.name} onChange={(e) => setProfile({ ...profile, name: e.target.value })} required /></div><div className="col-md-4"><Field label="Correo" name="profile-email" type="email" value={profile.email} onChange={(e) => setProfile({ ...profile, email: e.target.value })} required /></div><div className="col-md-3"><Field label="Teléfono" name="profile-phone" value={profile.telefono || ''} onChange={(e) => setProfile({ ...profile, telefono: e.target.value })} /></div><div className="col-md-1"><button className="btn btn-success w-100" aria-label="Guardar perfil">Guardar</button></div></form><form className="row g-3 align-items-end mt-2" onSubmit={async (event) => { event.preventDefault(); announce(''); try { await api.put('/auth/contrasena', passwordForm); setPasswordForm({ current_password: '', password: '', password_confirmation: '' }); announce('Contraseña actualizada. Vuelve a iniciar sesión.'); await logout() } catch (err) { announce(messageFromError(err)) } }}><div className="col-md-3"><Field label="Contraseña actual" name="current-password" type="password" value={passwordForm.current_password} onChange={(e) => setPasswordForm({ ...passwordForm, current_password: e.target.value })} required autoComplete="current-password" /></div><div className="col-md-3"><Field label="Nueva contraseña" name="new-password" type="password" value={passwordForm.password} onChange={(e) => setPasswordForm({ ...passwordForm, password: e.target.value })} required minLength="10" autoComplete="new-password" /></div><div className="col-md-3"><Field label="Confirmar nueva contraseña" name="confirm-new-password" type="password" value={passwordForm.password_confirmation} onChange={(e) => setPasswordForm({ ...passwordForm, password_confirmation: e.target.value })} required minLength="10" autoComplete="new-password" /></div><div className="col-md-3"><button className="btn btn-outline-success w-100">Actualizar contraseña</button></div></form></section>
     {(role === 'Administrador' || role === 'Refugio') && <>
-      <PetManagement role={role} pets={modules.pets || []} onDone={load} onNotice={setNotice} />
+      <PetManagement role={role} pets={modules.pets || []} onDone={load} onNotice={announce} />
       <RequestReview requests={modules.requests || []} onDone={load} />
-      <AssignmentManagement pets={modules.pets || []} homes={modules.homes || []} assignments={modules.assignments || []} onDone={load} onNotice={setNotice} />
+      <AssignmentManagement pets={modules.pets || []} homes={modules.homes || []} assignments={modules.assignments || []} onDone={load} onNotice={announce} />
     </>}
-    {role === 'Administrador' && <><UserManagement users={modules.users || []} roles={modules.roles || []} onDone={load} /><CatalogManagement onDone={load} onNotice={setNotice} /></>}
-    {role === 'Adoptante' && <AdopterActivity requests={modules.requests || []} adoptions={modules.adoptions || []} followUps={modules.followUps || []} appointments={modules.appointments || []} pets={modules.pets || []} veterinarians={modules.veterinarians || []} onDone={load} onNotice={setNotice} />}
-    {role === 'Veterinario' && <VeterinaryActivity appointments={modules.appointments || []} vaccines={modules.vaccines || []} onDone={load} onNotice={setNotice} />}
-    {role === 'Hogar temporal' && <FosterActivity home={modules.home} assignments={modules.assignments || []} onDone={load} onNotice={setNotice} />}
+    {role === 'Administrador' && <><UserManagement users={modules.users || []} roles={modules.roles || []} onDone={load} /><CatalogManagement onDone={load} onNotice={announce} /><AuditPanel rows={modules.auditLogs || []} /></>}
+    {role === 'Adoptante' && <AdopterActivity requests={modules.requests || []} adoptions={modules.adoptions || []} followUps={modules.followUps || []} appointments={modules.appointments || []} pets={modules.pets || []} veterinarians={modules.veterinarians || []} onDone={load} onNotice={announce} />}
+    {role === 'Veterinario' && <VeterinaryActivity appointments={payload.citas || modules.appointments || []} vaccines={modules.vaccines || []} history={payload.historial_reciente || []} vaccineHistory={payload.vacunas_recientes || []} onDone={load} onNotice={announce} />}
+    {role === 'Hogar temporal' && <FosterActivity home={modules.home} assignments={modules.assignments || []} onDone={load} onNotice={announce} />}
+    {role === 'Administrador' && <AdminActivity dashboard={payload} />}
+    {role === 'Refugio' && <ReportPanel />}
     <div className="dashboard-footer-note"><span>💚</span> Gracias por ser parte de una comunidad que cuida y conecta.</div>
   </main>
 }
 
-function Section({ eyebrow, title, children, action }) {
-  return <section className="dashboard-section"><div className="section-title"><div><span className="eyebrow">{eyebrow}</span><h2>{title}</h2></div>{action}</div>{children}</section>
+function DashboardNav({ role }) {
+  const menus = {
+    Administrador: [['Resumen', '#resumen'], ['Notificaciones', '#notificaciones'], ['Mascotas', '#gestion-mascotas'], ['Solicitudes', '#solicitudes-recibidas'], ['Hogares', '#asignaciones'], ['Usuarios y roles', '#usuarios-roles'], ['Catálogos', '#catalogos'], ['Auditoría', '#auditoria'], ['Módulos y reportes', '#reportes-admin']],
+    Adoptante: [['Explorar mascotas', '/mascotas'], ['Notificaciones', '#notificaciones'], ['Mis solicitudes', '#mis-solicitudes'], ['Adopciones', '#mis-adopciones'], ['Citas', '#mis-citas'], ['Perfil', '#mi-perfil']],
+    Refugio: [['Mascotas y publicaciones', '#gestion-mascotas'], ['Notificaciones', '#notificaciones'], ['Solicitudes recibidas', '#solicitudes-recibidas'], ['Hogares temporales', '#asignaciones'], ['Reportes', '#reportes-refugio'], ['Perfil', '#mi-perfil']],
+    Veterinario: [['Agenda', '#agenda-veterinaria'], ['Notificaciones', '#notificaciones'], ['Historiales', '#historial-veterinario'], ['Vacunas', '#vacunas-veterinario'], ['Perfil', '#mi-perfil']],
+    'Hogar temporal': [['Mi hogar', '#mi-hogar'], ['Notificaciones', '#notificaciones'], ['Asignaciones', '#asignaciones-hogar'], ['Perfil', '#mi-perfil']],
+  }
+  return <nav className="dashboard-nav" aria-label={'Navegación del panel ' + role}>{(menus[role] || []).map(([label, href]) => <a key={label} href={href}>{label}</a>)}</nav>
+}
+
+function NotificationPanel({ items, unreadCount, onDone }) {
+  const [error, setError] = useState('')
+  async function markRead(id) {
+    setError('')
+    try { await api.patch('/notificaciones/' + id + '/leida'); await onDone() } catch (err) { setError(messageFromError(err)) }
+  }
+  async function markAllRead() {
+    setError('')
+    try { await api.patch('/notificaciones/leidas'); await onDone() } catch (err) { setError(messageFromError(err)) }
+  }
+  return <Section id="notificaciones" eyebrow="Avisos de tu cuenta" title="Notificaciones" action={unreadCount > 0 && <button className="btn btn-sm btn-outline-success" onClick={markAllRead}>Marcar todas como leídas</button>}>
+    {error && <div className="alert alert-danger py-2" role="alert">{error}</div>}{items.length ? <div className="vstack gap-2">{items.map((item) => <article className={'notification-item' + (item.read_at ? '' : ' notification-unread')} key={item.id}><div>{item.data?.url ? <Link className="fw-bold text-success" to={item.data.url}>{item.data?.title || 'Actualización de PetLink'}</Link> : <strong>{item.data?.title || 'Actualización de PetLink'}</strong>}<p className="mb-1">{item.data?.message}</p><small>{new Date(item.created_at).toLocaleString('es-CO')}</small></div>{!item.read_at && <button className="btn btn-sm btn-outline-success text-nowrap" onClick={() => markRead(item.id)}>Marcar leída</button>}</article>)}</div> : <EmptyState title="No hay notificaciones" text="Los cambios importantes de solicitudes, adopciones y citas aparecerán aquí." />}
+  </Section>
+}
+
+function AuditPanel({ rows }) {
+  return <Section id="auditoria" eyebrow="Trazabilidad" title="Auditoría de operaciones">
+    {rows.length ? <div className="table-responsive"><table className="table align-middle"><thead><tr><th>Fecha</th><th>Usuario</th><th>Acción</th><th>Registro</th></tr></thead><tbody>{rows.map((row) => <tr key={row.id}><td>{new Date(row.created_at).toLocaleString('es-CO')}</td><td>{row.actor?.name || 'Cuenta eliminada'}</td><td>{row.action}</td><td>{row.subject_type ? `${row.subject_type} #${row.subject_id}` : '—'}</td></tr>)}</tbody></table></div> : <EmptyState title="Sin operaciones auditadas" text="Las acciones críticas aparecerán después de guardar cambios." />}
+  </Section>
+}
+
+function ReportPanel() {
+  return <Section id="reportes-refugio" eyebrow="Actividad de tu refugio" title="Reporte de actividad" action={<DownloadReportButton />}><p className="text-secondary mb-0">Descarga cifras de mascotas, publicaciones, solicitudes, adopciones, citas y asignaciones bajo tu responsabilidad.</p></Section>
+}
+
+function DownloadReportButton() {
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  async function download() {
+    setBusy(true); setError('')
+    try {
+      const { data } = await api.get('/reportes/resumen.csv', { responseType: 'blob' })
+      const url = URL.createObjectURL(data)
+      const anchor = document.createElement('a')
+      anchor.href = url; anchor.download = 'petlink-resumen.csv'; anchor.click()
+      URL.revokeObjectURL(url)
+    } catch (err) { setError(messageFromError(err)) } finally { setBusy(false) }
+  }
+  return <div className="text-end"><button className="btn btn-outline-success" onClick={download} disabled={busy}>{busy ? 'Preparando…' : 'Descargar CSV'}</button>{error && <small className="d-block text-danger mt-1">{error}</small>}</div>
+}
+
+function Section({ eyebrow, title, children, action, id }) {
+  return <section id={id} className="dashboard-section"><div className="section-title"><div><span className="eyebrow">{eyebrow}</span><h2>{title}</h2></div>{action}</div>{children}</section>
+}
+
+function AdminActivity({ dashboard }) {
+  const requestsByState = dashboard.solicitudes_por_estado || []
+  const maxRequests = Math.max(1, ...requestsByState.map((item) => Number(item.total)))
+  return <Section id="reportes-admin" eyebrow="Supervisión general" title="Módulos veterinarios, donaciones y seguimientos" action={<DownloadReportButton />}>
+    {requestsByState.length > 0 && <div className="status-chart" aria-label="Solicitudes de adopción por estado">{requestsByState.map((item) => <div className="status-chart-row" key={item.estado}><span>{item.estado.replaceAll('_', ' ')}</span><div className="status-chart-track"><div className="status-chart-fill" style={{ width: `${Math.max(8, Number(item.total) / maxRequests * 100)}%` }} /></div><strong>{item.total}</strong></div>)}</div>}
+    <div className="row g-4 mt-1">
+      <div className="col-lg-6"><h3 className="h6">Citas veterinarias recientes</h3><ActivityTable rows={dashboard.citas_recientes || []} columns={[["Fecha", (item) => new Date(item.programada_en).toLocaleDateString('es-CO')], ["Mascota", (item) => item.mascota?.nombre], ["Estado", (item) => item.estado]]} empty="No hay citas registradas." /></div>
+      <div className="col-lg-6"><h3 className="h6">Historial médico reciente</h3><ActivityTable rows={dashboard.historial_medico_reciente || []} columns={[["Fecha", (item) => item.fecha_registro], ["Mascota", (item) => item.mascota?.nombre], ["Atención", (item) => item.titulo], ["Autor", (item) => item.autor?.name]]} empty="No hay atenciones registradas." /></div>
+      <div className="col-lg-6"><h3 className="h6">Vacunaciones</h3><ActivityTable rows={dashboard.vacunas_recientes || []} columns={[["Fecha", (item) => item.aplicada_en], ["Mascota", (item) => item.mascota?.nombre], ["Vacuna", (item) => item.vacuna?.nombre]]} empty="No hay vacunas registradas." /></div>
+      <div className="col-lg-6"><h3 className="h6">Donaciones registradas</h3><ActivityTable rows={dashboard.donaciones_recientes || []} columns={[["Aporte", (item) => item.tipo_aporte], ["Refugio", (item) => item.refugio?.nombre || '—'], ["COP", (item) => item.importe_cop || '—']]} empty="No hay donaciones registradas." /></div>
+      <div className="col-lg-6"><h3 className="h6">Seguimientos</h3><ActivityTable rows={dashboard.seguimientos_recientes || []} columns={[["Mascota", (item) => item.adopcion?.mascota?.nombre], ["Fecha", (item) => item.fecha_programada], ["Estado", (item) => item.resultado]]} empty="No hay seguimientos registrados." /></div>
+    </div>
+  </Section>
+}
+
+function ActivityTable({ rows, columns, empty }) {
+  if (!rows.length) return <p className="small text-secondary">{empty}</p>
+  return <div className="table-responsive"><table className="table table-sm align-middle"><thead><tr>{columns.map(([label]) => <th key={label}>{label}</th>)}</tr></thead><tbody>{rows.map((row) => <tr key={row.id}>{columns.map(([label, value]) => <td key={label}>{value(row) || '—'}</td>)}</tr>)}</tbody></table></div>
 }
 
 function PetManagement({ role, pets, onDone, onNotice }) {
@@ -341,10 +459,28 @@ function PetManagement({ role, pets, onDone, onNotice }) {
       setShowForm(false); onNotice(photoError ? 'Mascota registrada; no se pudo subir la fotografía: ' + photoError : 'Mascota registrada y publicada.'); await onDone()
     } catch (err) { setError(messageFromError(err)) } finally { setBusy(false) }
   }
-  return <Section eyebrow={role === 'Administrador' ? 'Gestión general' : 'Tu refugio'} title="Mascotas y publicaciones" action={<button className="btn btn-success rounded-pill" onClick={() => setShowForm(!showForm)}>{showForm ? 'Cerrar formulario' : '+ Registrar mascota'}</button>}>
+  return <Section id="gestion-mascotas" eyebrow={role === 'Administrador' ? 'Gestión general' : 'Tu refugio'} title="Mascotas y publicaciones" action={<button className="btn btn-success rounded-pill" onClick={() => setShowForm(!showForm)}>{showForm ? 'Cerrar formulario' : '+ Registrar mascota'}</button>}>
     {showForm && <form className="form-panel row g-3 mb-4" onSubmit={submit}><div className="col-md-4"><Field label="Nombre" name="pet-name" value={form.nombre} onChange={(e) => setForm({ ...form, nombre: e.target.value })} required /></div><div className="col-md-3"><label className="form-label" htmlFor="pet-species">Especie</label><select className="form-select" id="pet-species" value={form.especie_id} onChange={(e) => setForm({ ...form, especie_id: e.target.value })} required><option value="">Elige una especie</option>{species.map((item) => <option key={item.id} value={item.id}>{item.nombre}</option>)}</select></div><div className="col-md-2"><label className="form-label" htmlFor="pet-sex">Sexo</label><select className="form-select" id="pet-sex" value={form.sexo} onChange={(e) => setForm({ ...form, sexo: e.target.value })}><option value="hembra">Hembra</option><option value="macho">Macho</option><option value="desconocido">Sin especificar</option></select></div><div className="col-md-3"><label className="form-label" htmlFor="pet-size">Tamaño</label><select className="form-select" id="pet-size" value={form.tamano} onChange={(e) => setForm({ ...form, tamano: e.target.value })}><option value="pequeno">Pequeño</option><option value="mediano">Mediano</option><option value="grande">Grande</option></select></div><div className="col-md-3"><Field label="Edad aproximada" name="pet-age" type="number" min="0" max="40" value={form.edad_estimada_anios} onChange={(e) => setForm({ ...form, edad_estimada_anios: e.target.value })} /></div><div className="col-md-4"><label className="form-label" htmlFor="pet-photo">Fotografía (opcional)</label><input className="form-control" id="pet-photo" type="file" accept="image/jpeg,image/png,image/webp" onChange={(e) => setForm({ ...form, foto: e.target.files?.[0] || null })} /></div><div className="col-md-5"><label className="form-label" htmlFor="pet-description">Descripción</label><textarea className="form-control" id="pet-description" rows="2" value={form.descripcion} onChange={(e) => setForm({ ...form, descripcion: e.target.value })} /></div>{error && <div className="col-12"><div className="alert alert-danger py-2">{error}</div></div>}<div className="col-12 text-end"><button className="btn btn-success rounded-pill px-4" disabled={busy}>{busy ? 'Guardando…' : 'Guardar y publicar'}</button></div></form>}
+    <PetPhotos pets={pets} onDone={onDone} onNotice={onNotice} />
     {pets.length ? <div className="table-responsive"><table className="table align-middle"><thead><tr><th>Mascota</th><th>Especie</th><th>Estado</th><th>Publicación</th><th /></tr></thead><tbody>{pets.map((pet) => <tr key={pet.id}><td><Link to={'/mascotas/' + pet.id}>{pet.nombre}</Link></td><td>{pet.especie?.nombre}</td><td><select className="form-select form-select-sm" value={pet.estado?.id || ''} onChange={(e) => changeState(pet, e.target.value)} aria-label={'Estado de ' + pet.nombre}>{states.filter((item) => item.codigo !== 'adoptada').map((item) => <option key={item.id} value={item.id}>{item.nombre}</option>)}</select></td><td>{pet.publicacion?.estado === 'publicada' ? 'Publicada' : 'Cerrada'}</td><td>{pet.publicacion && pet.estado?.codigo === 'disponible' && <button className="btn btn-sm btn-outline-success" onClick={() => togglePublication(pet)}>{pet.publicacion.estado === 'publicada' ? 'Cerrar' : 'Reabrir'}</button>}</td></tr>)}</tbody></table></div> : <EmptyState title="Aún no hay mascotas registradas" text="Usa el botón para crear la primera ficha." />}
   </Section>
+}
+
+function PetPhotos({ pets, onDone, onNotice }) {
+  async function upload(pet, file) {
+    if (!file) return
+    const form = new FormData(); form.append('foto', file)
+    try { await api.post('/mascotas/' + pet.id + '/fotos', form); onNotice('Fotografía cargada.'); await onDone() } catch (err) { onNotice(messageFromError(err)) }
+  }
+  async function setPrimary(pet, photo) {
+    try { await api.patch(`/mascotas/${pet.id}/fotos/${photo.id}/principal`); onNotice('Fotografía principal actualizada.'); await onDone() } catch (err) { onNotice(messageFromError(err)) }
+  }
+  async function remove(pet, photo) {
+    if (!window.confirm('¿Eliminar esta fotografía de ' + pet.nombre + '?')) return
+    try { await api.delete(`/mascotas/${pet.id}/fotos/${photo.id}`); onNotice('Fotografía eliminada.'); await onDone() } catch (err) { onNotice(messageFromError(err)) }
+  }
+  if (!pets.length) return null
+  return <div className="pet-photo-management" aria-label="Administrar fotografías de mascotas">{pets.map((pet) => <div className="pet-photo-row" key={pet.id}><strong>{pet.nombre}</strong><div className="pet-photo-list">{(pet.fotos || []).map((photo) => <div className="pet-photo-item" key={photo.id}><img src={photo.url || photo.ruta} alt={photo.texto_alternativo || 'Fotografía de ' + pet.nombre} /><div className="d-flex flex-wrap gap-1">{photo.principal ? <span className="status-pill status-success">Principal</span> : <button className="btn btn-sm btn-outline-success" onClick={() => setPrimary(pet, photo)}>Hacer principal</button>}<button className="btn btn-sm btn-outline-danger" onClick={() => remove(pet, photo)}>Eliminar</button></div></div>)}</div><label className="btn btn-sm btn-outline-success mb-0">Añadir foto<input className="visually-hidden" type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => { upload(pet, event.target.files?.[0]); event.target.value = '' }} /></label></div>)}</div>
 }
 
 function RequestReview({ requests, onDone }) {
@@ -357,7 +493,7 @@ function RequestReview({ requests, onDone }) {
     setError('')
     try { await api.post('/solicitudes/' + item.id + '/formalizar'); await onDone() } catch (err) { setError(messageFromError(err)) }
   }
-  return <Section eyebrow="Proceso de adopción" title="Solicitudes recibidas">
+  return <Section id="solicitudes-recibidas" eyebrow="Proceso de adopción" title="Solicitudes recibidas">
     {error && <div className="alert alert-danger">{error}</div>}
     {requests.length ? <div className="table-responsive"><table className="table align-middle"><thead><tr><th>Adoptante</th><th>Mascota</th><th>Motivación</th><th>Estado</th><th>Acciones</th></tr></thead><tbody>{requests.map((item) => <tr key={item.id}><td>{item.adoptante?.name}</td><td>{item.publicacion?.mascota?.nombre}</td><td className="request-note">{item.motivacion || 'Sin comentario'}</td><td><Status value={item.estado} /></td><td><div className="d-flex gap-2 flex-wrap">{item.estado === 'pendiente' && <button className="btn btn-sm btn-outline-success" onClick={() => changeStatus(item, 'en_revision')}>Revisar</button>}{item.estado === 'en_revision' && <><button className="btn btn-sm btn-success" onClick={() => changeStatus(item, 'aprobada')}>Aprobar</button><button className="btn btn-sm btn-outline-danger" onClick={() => changeStatus(item, 'rechazada')}>Rechazar</button></>}{item.estado === 'aprobada' && <button className="btn btn-sm btn-success" onClick={() => formalize(item)}>Formalizar</button>}</div></td></tr>)}</tbody></table></div> : <EmptyState title="No hay solicitudes por revisar" text="Las solicitudes nuevas aparecerán aquí." />}
   </Section>
@@ -369,7 +505,7 @@ function UserManagement({ users, roles, onDone }) {
     setError('')
     try { await api.patch('/usuarios/' + user.id, changes); await onDone() } catch (err) { setError(messageFromError(err)) }
   }
-  return <Section eyebrow="Administración" title="Usuarios y roles">
+  return <Section id="usuarios-roles" eyebrow="Administración" title="Usuarios y roles">
     {error && <div className="alert alert-danger">{error}</div>}
     <div className="table-responsive"><table className="table align-middle"><thead><tr><th>Nombre</th><th>Correo</th><th>Rol</th><th>Estado</th><th /></tr></thead><tbody>{users.map((item) => <tr key={item.id}><td>{item.name}</td><td>{item.email}</td><td><select className="form-select form-select-sm role-select" value={item.role_id} onChange={(e) => update(item, { role_id: Number(e.target.value) })}>{roles.map((role) => <option key={role.id} value={role.id}>{role.nombre}</option>)}</select></td><td><Status value={item.activo ? 'Activo' : 'Inactivo'} /></td><td><button className="btn btn-sm btn-outline-secondary" onClick={() => update(item, { activo: !item.activo })}>{item.activo ? 'Desactivar' : 'Activar'}</button></td></tr>)}</tbody></table></div>
   </Section>
@@ -377,22 +513,36 @@ function UserManagement({ users, roles, onDone }) {
 
 function CatalogManagement({ onDone, onNotice }) {
   const [species, setSpecies] = useState([])
+  const [breeds, setBreeds] = useState([])
+  const [states, setStates] = useState([])
   const [form, setForm] = useState({ species: '', breed: '', vaccine: '', species_id: '' })
   const [error, setError] = useState('')
   const refresh = useCallback(async () => {
-    try { const { data } = await api.get('/catalogos/especies'); setSpecies(data.data || []) } catch { setSpecies([]) }
+    const results = await Promise.allSettled([api.get('/catalogos/especies'), api.get('/catalogos/razas'), api.get('/catalogos/estados-mascota')])
+    setSpecies(results[0].status === 'fulfilled' ? results[0].value.data.data || [] : [])
+    setBreeds(results[1].status === 'fulfilled' ? results[1].value.data.data || [] : [])
+    setStates(results[2].status === 'fulfilled' ? results[2].value.data.data || [] : [])
   }, [])
+  async function updateCatalog(path, fields) {
+    setError(''); onNotice('')
+    try { await api.patch(path, fields); onNotice('Catálogo actualizado.'); await refresh() } catch (err) { setError(messageFromError(err)) }
+  }
   useEffect(() => { refresh() }, [refresh])
   async function submit(event, path, body, clear) {
     event.preventDefault(); setError(''); onNotice('')
     try { await api.post(path, body); setForm((current) => ({ ...current, ...clear })); onNotice('Catálogo actualizado.'); await refresh(); await onDone() } catch (err) { setError(messageFromError(err)) }
   }
-  return <Section eyebrow="Catálogos" title="Especies, razas y vacunas">
+  return <Section id="catalogos" eyebrow="Catálogos" title="Especies, razas, estados y vacunas">
     {error && <div className="alert alert-danger py-2">{error}</div>}
     <div className="row g-3">
       <form className="col-lg-4" onSubmit={(e) => submit(e, '/catalogos/especies', { nombre: form.species }, { species: '' })}><label className="form-label" htmlFor="new-species">Nueva especie</label><div className="input-group"><input className="form-control" id="new-species" value={form.species} onChange={(e) => setForm({ ...form, species: e.target.value })} required maxLength="60" /><button className="btn btn-outline-success">Agregar</button></div></form>
       <form className="col-lg-4" onSubmit={(e) => submit(e, '/catalogos/razas', { especie_id: Number(form.species_id), nombre: form.breed }, { breed: '' })}><label className="form-label" htmlFor="new-breed">Nueva raza</label><div className="input-group"><select id="new-breed-species" className="form-select" value={form.species_id} onChange={(e) => setForm({ ...form, species_id: e.target.value })} required><option value="">Especie</option>{species.map((item) => <option key={item.id} value={item.id}>{item.nombre}</option>)}</select><input className="form-control" id="new-breed" placeholder="Nombre" value={form.breed} onChange={(e) => setForm({ ...form, breed: e.target.value })} required maxLength="80" /><button className="btn btn-outline-success">Agregar</button></div></form>
       <form className="col-lg-4" onSubmit={(e) => submit(e, '/vacunas', { nombre: form.vaccine }, { vaccine: '' })}><label className="form-label" htmlFor="new-vaccine">Nueva vacuna</label><div className="input-group"><input className="form-control" id="new-vaccine" value={form.vaccine} onChange={(e) => setForm({ ...form, vaccine: e.target.value })} required maxLength="100" /><button className="btn btn-outline-success">Agregar</button></div></form>
+    </div>
+    <div className="row g-4 mt-2">
+      <div className="col-lg-4"><h3 className="h6">Especies</h3><div className="table-responsive"><table className="table table-sm align-middle"><tbody>{species.map((item) => <tr key={item.id}><td>{item.nombre}</td><td><Status value={item.activo ? 'Activa' : 'Inactiva'} /></td><td><button className="btn btn-sm btn-outline-secondary" onClick={() => updateCatalog('/catalogos/especies/' + item.id, { activo: !item.activo })}>{item.activo ? 'Desactivar' : 'Activar'}</button></td></tr>)}</tbody></table></div></div>
+      <div className="col-lg-4"><h3 className="h6">Razas</h3><div className="table-responsive"><table className="table table-sm align-middle"><tbody>{breeds.map((item) => <tr key={item.id}><td>{item.nombre}<small className="d-block text-secondary">{item.especie?.nombre}</small></td><td><Status value={item.activo ? 'Activa' : 'Inactiva'} /></td><td><button className="btn btn-sm btn-outline-secondary" onClick={() => updateCatalog('/catalogos/razas/' + item.id, { activo: !item.activo })}>{item.activo ? 'Desactivar' : 'Activar'}</button></td></tr>)}</tbody></table></div></div>
+      <div className="col-lg-4"><h3 className="h6">Estados de mascotas</h3><div className="table-responsive"><table className="table table-sm align-middle"><thead><tr><th>Estado</th><th>Visible</th><th /></tr></thead><tbody>{states.map((item) => <tr key={item.id}><td><strong>{item.nombre}</strong><small className="d-block text-secondary">{item.codigo}</small></td><td><input type="checkbox" className="form-check-input" checked={Boolean(item.visible_publico)} aria-label={'Visibilidad pública de ' + item.nombre} onChange={(e) => updateCatalog('/catalogos/estados-mascota/' + item.id, { visible_publico: e.target.checked })} /></td><td><button className="btn btn-sm btn-outline-secondary" onClick={() => { const nombre = window.prompt('Nuevo nombre del estado', item.nombre); if (nombre?.trim()) updateCatalog('/catalogos/estados-mascota/' + item.id, { nombre: nombre.trim() }) }}>Renombrar</button></td></tr>)}</tbody></table></div></div>
     </div>
   </Section>
 }
@@ -408,7 +558,7 @@ function AssignmentManagement({ pets, homes, assignments, onDone, onNotice }) {
     setError('')
     try { await api.patch('/asignaciones-hogar/' + item.id + '/finalizar'); await onDone() } catch (err) { setError(messageFromError(err)) }
   }
-  return <Section eyebrow="Acogida temporal" title="Asignaciones de hogares">
+  return <Section id="asignaciones" eyebrow="Acogida temporal" title="Asignaciones de hogares">
     {error && <div className="alert alert-danger py-2">{error}</div>}
     {homes.length && pets.length ? <form className="form-panel row g-3 align-items-end mb-4" onSubmit={submit}><div className="col-md-3"><label className="form-label" htmlFor="assign-pet">Mascota</label><select id="assign-pet" className="form-select" value={form.mascota_id} onChange={(e) => setForm({ ...form, mascota_id: e.target.value })} required><option value="">Selecciona</option>{pets.map((item) => <option key={item.id} value={item.id}>{item.nombre}</option>)}</select></div><div className="col-md-4"><label className="form-label" htmlFor="assign-home">Hogar disponible</label><select id="assign-home" className="form-select" value={form.hogar_id} onChange={(e) => setForm({ ...form, hogar_id: e.target.value })} required><option value="">Selecciona</option>{homes.filter((item) => item.espacios_ocupados < item.capacidad).map((item) => <option key={item.id} value={item.id}>{item.responsable?.name} · {item.espacios_ocupados}/{item.capacidad}</option>)}</select></div><div className="col-md-2"><Field label="Inicio" name="assign-start" type="date" value={form.inicio} onChange={(e) => setForm({ ...form, inicio: e.target.value })} required /></div><div className="col-md-2"><Field label="Fin (opcional)" name="assign-end" type="date" value={form.fin} onChange={(e) => setForm({ ...form, fin: e.target.value })} /></div><div className="col-md-1"><button className="btn btn-success w-100" aria-label="Asignar hogar">+</button></div></form> : <p className="text-secondary">Para asignar una mascota, registra un hogar temporal y una mascota primero.</p>}
     {assignments.length ? <div className="table-responsive"><table className="table align-middle"><thead><tr><th>Mascota</th><th>Hogar</th><th>Fechas</th><th>Estado</th><th /></tr></thead><tbody>{assignments.map((item) => <tr key={item.id}><td>{item.mascota?.nombre}</td><td>{item.hogar?.responsable?.name}</td><td>{item.inicio} – {item.fin || 'En curso'}</td><td><Status value={item.estado} /></td><td>{item.estado === 'activa' && <button className="btn btn-sm btn-outline-success" onClick={() => close(item)}>Finalizar</button>}</td></tr>)}</tbody></table></div> : <EmptyState title="Sin asignaciones" text="Las acogidas creadas aparecerán aquí." />}
@@ -434,14 +584,14 @@ function AdopterActivity({ requests, adoptions, followUps, appointments, pets, v
     } catch (err) { onNotice(messageFromError(err)) } finally { setBusy(false) }
   }
   return <>
-    <Section eyebrow="Tu proceso" title="Mis solicitudes">
+    <Section id="mis-solicitudes" eyebrow="Tu proceso" title="Mis solicitudes">
       {requests.length ? <div className="row g-3">{requests.map((item) => <div className="col-md-6" key={item.id}><div className="activity-card"><div><strong>{item.publicacion?.mascota?.nombre || 'Mascota'}</strong><small>Enviada el {new Date(item.created_at).toLocaleDateString('es-CO')}</small></div><Status value={item.estado} /></div></div>)}</div> : <EmptyState title="Aún no has enviado solicitudes" text="Explora las mascotas disponibles para comenzar." />}
     </Section>
-    <Section eyebrow="Una nueva familia" title="Mis adopciones">
+    <Section id="mis-adopciones" eyebrow="Una nueva familia" title="Mis adopciones">
       {adoptions.length ? <div className="row g-3">{adoptions.map((item) => <div className="col-md-6" key={item.id}><div className="activity-card"><div><strong>{item.mascota?.nombre}</strong><small>Adopción del {new Date(item.fecha_adopcion).toLocaleDateString('es-CO')}</small></div><Status value={item.estado} /></div></div>)}</div> : <EmptyState title="Todavía no hay adopciones formalizadas" text="Aquí podrás consultar el historial y los seguimientos." />}
     </Section>
-    {followUps.length > 0 && <Section eyebrow="Después de adoptar" title="Seguimientos"><div className="row g-3">{followUps.map((item) => <div className="col-md-6" key={item.id}><div className="activity-card"><div><strong>{item.adopcion?.mascota?.nombre}</strong><small>Próximo seguimiento: {item.fecha_programada}</small></div><Status value={item.resultado} /></div></div>)}</div></Section>}
-    <Section eyebrow="Salud y bienestar" title="Mis citas veterinarias">
+    {followUps.length > 0 && <Section id="mis-seguimientos" eyebrow="Después de adoptar" title="Seguimientos"><div className="row g-3">{followUps.map((item) => <div className="col-md-6" key={item.id}><div className="activity-card"><div><strong>{item.adopcion?.mascota?.nombre}</strong><small>Próximo seguimiento: {item.fecha_programada}</small></div><Status value={item.resultado} /></div></div>)}</div></Section>}
+    <Section id="mis-citas" eyebrow="Salud y bienestar" title="Mis citas veterinarias">
       {appointments.length ? <div className="row g-3">{appointments.map((item) => <div className="col-md-6" key={item.id}><AppointmentCard item={item} onDone={onDone} onNotice={onNotice} /></div>)}</div> : <EmptyState title="No tienes citas registradas" text="Puedes solicitar una cita para una mascota disponible o adoptada por ti." />}
       <form className="form-panel row g-3 align-items-end mt-3" onSubmit={book}><div className="col-md-3"><label className="form-label" htmlFor="appointment-pet">Mascota</label><select id="appointment-pet" className="form-select" value={appointment.mascota_id} onChange={(e) => setAppointment({ ...appointment, mascota_id: e.target.value })} required><option value="">Selecciona</option>{pets.map((item) => <option key={item.id} value={item.id}>{item.nombre} · disponible</option>)}{adoptions.map((item) => <option key={'adopcion-' + item.mascota?.id} value={item.mascota?.id}>{item.mascota?.nombre} · adoptada</option>)}</select></div><div className="col-md-3"><label className="form-label" htmlFor="appointment-vet">Veterinario</label><select id="appointment-vet" className="form-select" value={appointment.veterinario_id} onChange={(e) => setAppointment({ ...appointment, veterinario_id: e.target.value })} required><option value="">Selecciona</option>{veterinarians.map((item) => <option key={item.id} value={item.id}>{item.usuario?.name} · {item.especialidad || 'General'}</option>)}</select></div><div className="col-md-3"><Field label="Fecha y hora" name="appointment-date" type="datetime-local" min={localDateTimeMin()} value={appointment.programada_en} onChange={(e) => setAppointment({ ...appointment, programada_en: e.target.value })} required /></div><div className="col-md-2"><Field label="Motivo" name="appointment-reason" value={appointment.motivo} onChange={(e) => setAppointment({ ...appointment, motivo: e.target.value })} /></div><div className="col-md-1"><button className="btn btn-success w-100" disabled={busy} aria-label="Solicitar cita">{busy ? '…' : 'Pedir'}</button></div></form>
     </Section>
@@ -449,7 +599,7 @@ function AdopterActivity({ requests, adoptions, followUps, appointments, pets, v
   </>
 }
 
-function VeterinaryActivity({ appointments, vaccines, onDone, onNotice }) {
+function VeterinaryActivity({ appointments, vaccines, history = [], vaccineHistory = [], onDone, onNotice }) {
   const [record, setRecord] = useState({ mascota_id: '', fecha_registro: localDateString(), titulo: '', descripcion: '', tipo: 'consulta' })
   const [vaccination, setVaccination] = useState({ mascota_id: '', vacuna_id: '', aplicada_en: localDateString(), refuerzo_en: '', lote: '', observaciones: '' })
   const appointmentPets = [...new Map(appointments.map((item) => [item.mascota_id, item])).values()]
@@ -466,9 +616,9 @@ function VeterinaryActivity({ appointments, vaccines, onDone, onNotice }) {
     try { await api.post('/vacunaciones', { ...vaccination, mascota_id: Number(vaccination.mascota_id), vacuna_id: Number(vaccination.vacuna_id), refuerzo_en: vaccination.refuerzo_en || null }); setVaccination({ ...vaccination, lote: '', observaciones: '' }); onNotice('Vacuna aplicada y registrada.'); await onDone() } catch (err) { onNotice(messageFromError(err)) }
   }
   return <>
-    <Section eyebrow="Agenda clínica" title="Mis citas">{appointments.length ? <div className="table-responsive"><table className="table align-middle"><thead><tr><th>Fecha</th><th>Mascota</th><th>Motivo</th><th>Estado</th><th /></tr></thead><tbody>{appointments.map((item) => <tr key={item.id}><td>{new Date(item.programada_en).toLocaleString('es-CO')}</td><td>{item.mascota?.nombre}</td><td>{item.motivo || 'Consulta'}</td><td><Status value={item.estado} /></td><td>{item.estado !== 'realizada' && item.estado !== 'cancelada' && <button className="btn btn-sm btn-outline-success" onClick={() => completeAppointment(item)}>Marcar realizada</button>}</td></tr>)}</tbody></table></div> : <EmptyState title="No hay citas programadas" text="Las citas asignadas aparecerán en esta lista." />}</Section>
-    <Section eyebrow="Bienestar animal" title="Agregar al historial médico"><form className="form-panel row g-3" onSubmit={addRecord}><div className="col-md-3"><label className="form-label" htmlFor="record-pet">Mascota de una cita</label><select className="form-select" id="record-pet" value={record.mascota_id} onChange={(e) => setRecord({ ...record, mascota_id: e.target.value })} required><option value="">Selecciona</option>{appointmentPets.map((item) => <option key={item.mascota_id} value={item.mascota_id}>{item.mascota?.nombre}</option>)}</select></div><div className="col-md-3"><Field label="Tipo" name="record-type" value={record.tipo} onChange={(e) => setRecord({ ...record, tipo: e.target.value })} required /></div><div className="col-md-3"><Field label="Fecha" name="record-date" type="date" value={record.fecha_registro} onChange={(e) => setRecord({ ...record, fecha_registro: e.target.value })} required /></div><div className="col-md-3"><Field label="Título" name="record-title" value={record.titulo} onChange={(e) => setRecord({ ...record, titulo: e.target.value })} required /></div><div className="col-md-10"><label className="form-label" htmlFor="record-description">Descripción</label><textarea id="record-description" className="form-control" rows="2" value={record.descripcion} onChange={(e) => setRecord({ ...record, descripcion: e.target.value })} required /></div><div className="col-md-2 d-flex align-items-end"><button className="btn btn-success w-100">Guardar</button></div></form></Section>
-    <Section eyebrow="Vacunación" title="Registrar aplicación de vacuna"><form className="form-panel row g-3" onSubmit={addVaccination}><div className="col-md-3"><label className="form-label" htmlFor="vaccination-pet">Mascota de una cita</label><select className="form-select" id="vaccination-pet" value={vaccination.mascota_id} onChange={(e) => setVaccination({ ...vaccination, mascota_id: e.target.value })} required><option value="">Selecciona</option>{appointmentPets.map((item) => <option key={item.mascota_id} value={item.mascota_id}>{item.mascota?.nombre}</option>)}</select></div><div className="col-md-3"><label className="form-label" htmlFor="vaccine">Vacuna</label><select className="form-select" id="vaccine" value={vaccination.vacuna_id} onChange={(e) => setVaccination({ ...vaccination, vacuna_id: e.target.value })} required><option value="">Selecciona</option>{vaccines.map((item) => <option key={item.id} value={item.id}>{item.nombre}</option>)}</select></div><div className="col-md-3"><Field label="Fecha de aplicación" name="vaccine-date" type="date" value={vaccination.aplicada_en} onChange={(e) => setVaccination({ ...vaccination, aplicada_en: e.target.value })} required /></div><div className="col-md-3"><Field label="Refuerzo (opcional)" name="vaccine-next" type="date" value={vaccination.refuerzo_en} onChange={(e) => setVaccination({ ...vaccination, refuerzo_en: e.target.value })} /></div><div className="col-md-4"><Field label="Lote" name="vaccine-lot" value={vaccination.lote} onChange={(e) => setVaccination({ ...vaccination, lote: e.target.value })} /></div><div className="col-md-6"><Field label="Observaciones" name="vaccine-notes" value={vaccination.observaciones} onChange={(e) => setVaccination({ ...vaccination, observaciones: e.target.value })} /></div><div className="col-md-2 d-flex align-items-end"><button className="btn btn-success w-100">Guardar vacuna</button></div></form></Section>
+    <Section id="agenda-veterinaria" eyebrow="Agenda clínica" title="Mis citas">{appointments.length ? <div className="table-responsive"><table className="table align-middle"><thead><tr><th>Fecha</th><th>Mascota</th><th>Motivo</th><th>Estado</th><th /></tr></thead><tbody>{appointments.map((item) => <tr key={item.id}><td>{new Date(item.programada_en).toLocaleString('es-CO')}</td><td>{item.mascota?.nombre}</td><td>{item.motivo || 'Consulta'}</td><td><Status value={item.estado} /></td><td>{item.estado !== 'realizada' && item.estado !== 'cancelada' && <button className="btn btn-sm btn-outline-success" onClick={() => completeAppointment(item)}>Marcar realizada</button>}</td></tr>)}</tbody></table></div> : <EmptyState title="No hay citas programadas" text="Las citas asignadas aparecerán en esta lista." />}</Section>
+    <Section id="historial-veterinario" eyebrow="Bienestar animal" title="Historiales autorizados"><ActivityTable rows={history} columns={[["Fecha", (item) => item.fecha_registro], ["Mascota", (item) => item.mascota?.nombre], ["Atención", (item) => item.titulo], ["Tipo", (item) => item.tipo]]} empty="Aún no hay atenciones registradas para tus citas." /><form className="form-panel row g-3 mt-2" onSubmit={addRecord}><div className="col-md-3"><label className="form-label" htmlFor="record-pet">Mascota de una cita</label><select className="form-select" id="record-pet" value={record.mascota_id} onChange={(e) => setRecord({ ...record, mascota_id: e.target.value })} required><option value="">Selecciona</option>{appointmentPets.map((item) => <option key={item.mascota_id} value={item.mascota_id}>{item.mascota?.nombre}</option>)}</select></div><div className="col-md-3"><Field label="Tipo" name="record-type" value={record.tipo} onChange={(e) => setRecord({ ...record, tipo: e.target.value })} required /></div><div className="col-md-3"><Field label="Fecha" name="record-date" type="date" value={record.fecha_registro} onChange={(e) => setRecord({ ...record, fecha_registro: e.target.value })} required /></div><div className="col-md-3"><Field label="Título" name="record-title" value={record.titulo} onChange={(e) => setRecord({ ...record, titulo: e.target.value })} required /></div><div className="col-md-10"><label className="form-label" htmlFor="record-description">Descripción</label><textarea id="record-description" className="form-control" rows="2" value={record.descripcion} onChange={(e) => setRecord({ ...record, descripcion: e.target.value })} required /></div><div className="col-md-2 d-flex align-items-end"><button className="btn btn-success w-100">Guardar</button></div></form></Section>
+    <Section id="vacunas-veterinario" eyebrow="Vacunación" title="Historial y aplicación de vacunas"><ActivityTable rows={vaccineHistory} columns={[["Fecha", (item) => item.aplicada_en], ["Mascota", (item) => item.mascota?.nombre], ["Vacuna", (item) => item.vacuna?.nombre], ["Refuerzo", (item) => item.refuerzo_en]]} empty="Aún no hay vacunas registradas por ti." /><form className="form-panel row g-3 mt-2" onSubmit={addVaccination}><div className="col-md-3"><label className="form-label" htmlFor="vaccination-pet">Mascota de una cita</label><select className="form-select" id="vaccination-pet" value={vaccination.mascota_id} onChange={(e) => setVaccination({ ...vaccination, mascota_id: e.target.value })} required><option value="">Selecciona</option>{appointmentPets.map((item) => <option key={item.mascota_id} value={item.mascota_id}>{item.mascota?.nombre}</option>)}</select></div><div className="col-md-3"><label className="form-label" htmlFor="vaccine">Vacuna</label><select className="form-select" id="vaccine" value={vaccination.vacuna_id} onChange={(e) => setVaccination({ ...vaccination, vacuna_id: e.target.value })} required><option value="">Selecciona</option>{vaccines.map((item) => <option key={item.id} value={item.id}>{item.nombre}</option>)}</select></div><div className="col-md-3"><Field label="Fecha de aplicación" name="vaccine-date" type="date" value={vaccination.aplicada_en} onChange={(e) => setVaccination({ ...vaccination, aplicada_en: e.target.value })} required /></div><div className="col-md-3"><Field label="Refuerzo (opcional)" name="vaccine-next" type="date" value={vaccination.refuerzo_en} onChange={(e) => setVaccination({ ...vaccination, refuerzo_en: e.target.value })} /></div><div className="col-md-4"><Field label="Lote" name="vaccine-lot" value={vaccination.lote} onChange={(e) => setVaccination({ ...vaccination, lote: e.target.value })} /></div><div className="col-md-6"><Field label="Observaciones" name="vaccine-notes" value={vaccination.observaciones} onChange={(e) => setVaccination({ ...vaccination, observaciones: e.target.value })} /></div><div className="col-md-2 d-flex align-items-end"><button className="btn btn-success w-100">Guardar vacuna</button></div></form></Section>
   </>
 }
 
@@ -497,8 +647,8 @@ function FosterActivity({ home, assignments, onDone, onNotice }) {
     onNotice('')
     try { await api.patch('/asignaciones-hogar/' + item.id + '/finalizar'); onNotice('Acogida cerrada.'); await onDone() } catch (err) { onNotice(messageFromError(err)) }
   }
-  if (!home) return <Section eyebrow="Hogar temporal" title="Registra tu hogar"><form className="form-panel row g-3 align-items-end" onSubmit={register}><div className="col-md-3"><Field label="Capacidad de acogida" name="home-capacity" type="number" min="1" max="20" value={form.capacidad} onChange={(e) => setForm({ ...form, capacidad: Number(e.target.value) })} required /></div><div className="col-md-3 form-check ms-3"><input id="accept-dogs" type="checkbox" className="form-check-input" checked={form.acepta_perros} onChange={(e) => setForm({ ...form, acepta_perros: e.target.checked })} /><label className="form-check-label" htmlFor="accept-dogs">Acepta perros</label></div><div className="col-md-3 form-check"><input id="accept-cats" type="checkbox" className="form-check-input" checked={form.acepta_gatos} onChange={(e) => setForm({ ...form, acepta_gatos: e.target.checked })} /><label className="form-check-label" htmlFor="accept-cats">Acepta gatos</label></div><div className="col-md-8"><Field label="Notas" name="home-notes" value={form.notas} onChange={(e) => setForm({ ...form, notas: e.target.value })} /></div><div className="col-md-3"><button className="btn btn-success w-100">Registrar mi hogar</button></div></form></Section>
-  return <Section eyebrow="Acogidas autorizadas" title="Mascotas asignadas">{assignments.length ? <div className="table-responsive"><table className="table align-middle"><thead><tr><th>Mascota</th><th>Inicio</th><th>Fin</th><th>Estado</th><th /></tr></thead><tbody>{assignments.map((item) => <tr key={item.id}><td>{item.mascota?.nombre}</td><td>{item.inicio}</td><td>{item.fin || '—'}</td><td><Status value={item.estado} /></td><td>{item.estado === 'activa' && <button className="btn btn-sm btn-outline-success" onClick={() => close(item)}>Finalizar</button>}</td></tr>)}</tbody></table></div> : <EmptyState title="Aún no tienes mascotas asignadas" text="Las asignaciones aprobadas aparecerán aquí." />}</Section>
+  if (!home) return <Section id="mi-hogar" eyebrow="Hogar temporal" title="Registra tu hogar"><form className="form-panel row g-3 align-items-end" onSubmit={register}><div className="col-md-3"><Field label="Capacidad de acogida" name="home-capacity" type="number" min="1" max="20" value={form.capacidad} onChange={(e) => setForm({ ...form, capacidad: Number(e.target.value) })} required /></div><div className="col-md-3 form-check ms-3"><input id="accept-dogs" type="checkbox" className="form-check-input" checked={form.acepta_perros} onChange={(e) => setForm({ ...form, acepta_perros: e.target.checked })} /><label className="form-check-label" htmlFor="accept-dogs">Acepta perros</label></div><div className="col-md-3 form-check"><input id="accept-cats" type="checkbox" className="form-check-input" checked={form.acepta_gatos} onChange={(e) => setForm({ ...form, acepta_gatos: e.target.checked })} /><label className="form-check-label" htmlFor="accept-cats">Acepta gatos</label></div><div className="col-md-8"><Field label="Notas" name="home-notes" value={form.notas} onChange={(e) => setForm({ ...form, notas: e.target.value })} /></div><div className="col-md-3"><button className="btn btn-success w-100">Registrar mi hogar</button></div></form></Section>
+  return <><Section id="mi-hogar" eyebrow="Mi hogar temporal" title="Capacidad y preferencias"><div className="row g-3"><div className="col-sm-4"><div className="fact"><small>Capacidad</small><strong>{home.capacidad} mascotas</strong></div></div><div className="col-sm-4"><div className="fact"><small>Recibe perros</small><strong>{home.acepta_perros ? 'Sí' : 'No'}</strong></div></div><div className="col-sm-4"><div className="fact"><small>Recibe gatos</small><strong>{home.acepta_gatos ? 'Sí' : 'No'}</strong></div></div>{home.notas && <div className="col-12"><p className="mb-0 text-secondary">{home.notas}</p></div>}</div></Section><Section id="asignaciones-hogar" eyebrow="Acogidas autorizadas" title="Mascotas asignadas e historial">{assignments.length ? <div className="table-responsive"><table className="table align-middle"><thead><tr><th>Mascota</th><th>Inicio</th><th>Fin</th><th>Estado</th><th>Observaciones</th><th /></tr></thead><tbody>{assignments.map((item) => <tr key={item.id}><td>{item.mascota?.nombre}</td><td>{item.inicio}</td><td>{item.fin || '—'}</td><td><Status value={item.estado} /></td><td>{item.notas || '—'}</td><td>{item.estado === 'activa' && <button className="btn btn-sm btn-outline-success" onClick={() => close(item)}>Finalizar</button>}</td></tr>)}</tbody></table></div> : <EmptyState title="Aún no tienes mascotas asignadas" text="Las asignaciones aprobadas aparecerán aquí." />}</Section></>
 }
 
 function Status({ value }) {
@@ -528,5 +678,5 @@ function localDateString() {
 export default function App() {
   const { loading } = useAuth()
   if (loading) return <Loading />
-  return <><Header /><Routes><Route path="/" element={<HomePage />} /><Route path="/mascotas" element={<CatalogPage />} /><Route path="/mascotas/:id" element={<PetDetailPage />} /><Route path="/iniciar-sesion" element={<AuthPage mode="login" />} /><Route path="/registro" element={<AuthPage mode="register" />} /><Route path="/panel" element={<PrivateRoute><DashboardPage /></PrivateRoute>} /><Route path="*" element={<Navigate to="/" replace />} /></Routes><Footer /></>
+  return <><Header /><Routes><Route path="/" element={<HomePage />} /><Route path="/mascotas" element={<CatalogPage />} /><Route path="/mascotas/:id" element={<PetDetailPage />} /><Route path="/iniciar-sesion" element={<AuthPage mode="login" />} /><Route path="/registro" element={<AuthPage mode="register" />} /><Route path="/recuperar-contrasena" element={<PasswordRecoveryPage />} /><Route path="/panel" element={<PrivateRoute><DashboardPage /></PrivateRoute>} /><Route path="*" element={<Navigate to="/" replace />} /></Routes><Footer /></>
 }

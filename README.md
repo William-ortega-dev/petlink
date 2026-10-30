@@ -4,7 +4,7 @@ PetLink conecta personas adoptantes con refugios y responsables de mascotas en C
 
 ## Estado
 
-La aplicación se creó desde cero con una API Laravel y un cliente React independiente. PostgreSQL es el único motor configurado. Este equipo sí tiene PostgreSQL 18 corriendo en localhost:5432; psql.exe está instalado pero no está en PATH. La cuenta de ejemplo petlink no autenticó y pdo_pgsql no se carga por defecto, así que las migraciones y pruebas de integración no pudieron usar esa instancia.
+La aplicación usa una API Laravel y un cliente React independiente. PostgreSQL es el único motor configurado. Este equipo tiene PostgreSQL 18 en localhost:5432; psql.exe está instalado pero no está en PATH. PHP tiene la DLL `pdo_pgsql`, pero no la carga por defecto. Al habilitarla solo para la ejecución de PHPUnit, el servidor rechazó la contraseña local del usuario `petlink` al conectar con la base de pruebas `petlink_test`; no se modificaron credenciales ni datos.
 
 El enlace de Lucidchart del prompt no fue accesible. El esquema es una propuesta inicial basada en las entidades sugeridas y debe compararse con el MER antes de usar PetLink con datos reales.
 
@@ -125,39 +125,41 @@ npm run lint
 npm run build
 ~~~
 
-Resultados de verificación de esta ejecución: Composer validó el manifiesto; el lint y la compilación Vite terminaron correctamente; todos los archivos PHP del proyecto pasaron php -l y Laravel registró 53 rutas API. El intento completo de php artisan test dejó 2 pruebas de ejemplo aprobadas y 4 pruebas de integración bloqueadas porque PHP no cargaba pdo_pgsql. Al cargar las DLL solo para una comprobación, PHP alcanzó PostgreSQL 18 en localhost:5432, pero el servidor rechazó la contraseña de ejemplo. No se han verificado las migraciones ni las operaciones contra esa base.
+Verificación de esta actualización: la sintaxis PHP, `composer validate --strict --no-check-publish`, `npm run lint` y `npm run build` pasaron; Laravel registró 65 rutas API; las 3 pruebas unitarias pasaron. PHPUnit descubrió 22 pruebas de integración: una prueba de ejemplo pasó y 21 no pudieron conectar porque PostgreSQL rechazó la contraseña local del usuario `petlink` para `petlink_test`. No se verificaron migraciones, persistencia PostgreSQL ni flujos de API contra la base de datos. Configura credenciales válidas para esa base de pruebas antes de considerar esos checks completados.
 
-## Cuentas demo
+## Cuentas demo de desarrollo
 
-El seeder idempotente crea estas cuentas locales, todas con contraseña PetLink2026!:
+En `APP_ENV=local` o `APP_ENV=testing`, `php artisan migrate --seed` crea cuentas y datos de demostración relacionados solo cuando las cinco contraseñas están configuradas. Define valores aleatorios de al menos 16 caracteres en `backend/.env` (`PETLINK_DEMO_PASSWORD_ADMIN`, `PETLINK_DEMO_PASSWORD_ADOPTER`, `PETLINK_DEMO_PASSWORD_SHELTER`, `PETLINK_DEMO_PASSWORD_VETERINARIAN` y `PETLINK_DEMO_PASSWORD_FOSTER`). El seeder usa `firstOrCreate`: no duplica ni cambia usuarios que ya existan. En otro entorno controlado se necesita además `PETLINK_DEMO_ACCOUNTS=true`; producción siempre los omite. Las contraseñas se guardan con el cast `hashed` del modelo y nunca se devuelven por la API.
 
-| Perfil | Correo |
-| --- | --- |
-| Administrador | admin@petlink.local |
-| Refugio | refugio@petlink.local |
-| Adoptante | adoptante@petlink.local |
-| Veterinario | veterinario@petlink.local |
-| Hogar temporal | hogar@petlink.local |
-
-Son solo para demostración.
+Para que el selector de `Vite dev` rellene el formulario habitual, copia `frontend/.env.example` como `frontend/.env.local` y coloca allí los mismos cinco valores con el prefijo `VITE_`. Ese archivo es local y está ignorado por Git. El selector solo aparece durante desarrollo y la autenticación sigue pasando por la API. No configures esas variables en el frontend de producción.
 
 ## Funcionalidades implementadas
 
-- Registro de adoptantes, inicio/cierre de sesión, perfil y cambio de contraseña.
+- Registro de adoptantes, inicio/cierre de sesión, perfil, cambio y recuperación de contraseña. La recuperación usa el broker de Laravel y requiere configurar un transport de correo real para que el enlace llegue al usuario.
 - Tokens Sanctum Bearer con expiración de 120 minutos, rutas privadas y políticas para mascotas y solicitudes.
 - Catálogo paginado, búsqueda y filtros, detalle, fotografías y publicaciones.
 - Solicitudes con transiciones revisadas y formalización transaccional; al formalizar se cierra la publicación, cambia el estado de la mascota y se resuelven solicitudes competidoras.
 - Paneles con datos de la API para administrador, adoptante, refugio, veterinario y hogar temporal.
+- Notificaciones internas persistentes para nuevas solicitudes, decisiones de adopción y cambios de citas; cada cuenta solo consulta y marca sus avisos.
+- Auditoría de operaciones autenticadas de escritura, consultable únicamente por administradores; no almacena contraseñas ni cuerpos de solicitudes.
+- Reporte CSV con cifras actuales de PostgreSQL, global para administrador y limitado a las mascotas del refugio responsable.
+- Gestión de fotografías con validación de formato/tamaño, selección de imagen principal y eliminación autorizada.
 - Gestión base de refugios, hogares y asignaciones; citas con comprobación de horario; historial médico y vacunas; registro de donaciones sin cobros; seguimientos.
 - Migraciones PostgreSQL con claves, índices y restricciones; seeders repetibles.
 - Interfaz responsive en español conectada a la API.
 
 ## Pendiente y límites conocidos
 
-- Ejecutar migraciones, seeders y pruebas después de habilitar pdo_pgsql y configurar credenciales válidas para el servicio PostgreSQL local.
+- Ejecutar migraciones, seeders y pruebas con `pdo_pgsql` habilitado y credenciales válidas para PostgreSQL. Esta actualización añade migraciones aditivas para notificaciones y auditoría; no modifica PK/FK existentes.
 - Comparar el esquema con el MER original.
-- Configurar SMTP para recuperación de contraseña; no hay credenciales de correo.
-- Las fotos se cargan desde la API; los datos demo usan ilustraciones de respaldo.
+- Configurar SMTP para entregar los enlaces de recuperación; el entorno local usa `MAIL_MAILER=log` y deja el enlace en el log de Laravel.
+- En despliegue, configurar un bucket público de Supabase Storage y `PET_PHOTO_DISK=supabase`; la clave elevada queda únicamente en Laravel. El disco local sirve para desarrollo y no persiste en un host efímero.
 - Donaciones solo registran aportes; no hay pasarela de pagos.
 - Antes de desplegar, cambiar credenciales demo, secretos, CORS, URL pública, almacenamiento y reglas operativas.
+
+## Despliegue de demostración
+
+Hay una configuración inicial para Laravel en Render (`backend/Dockerfile`, `backend/render.yaml`) y para el SPA en Vercel (`frontend/vercel.json`). El procedimiento manual, variables y límites actuales están en [docs/despliegue-gratuito.md](docs/despliegue-gratuito.md). No se han creado servicios, conectado cuentas ni publicado la aplicación.
+
+Render Free puede suspender el backend al estar inactivo y el filesystem local es efímero. La propuesta usa Supabase para PostgreSQL y almacenamiento de fotos; la base gratuita puede pausarse tras una semana con baja actividad. Vercel Hobby está destinado a proyectos personales/no comerciales. Estos planes sirven para una demostración y no ofrecen garantías de producción.
 
