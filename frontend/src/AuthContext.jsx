@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useMemo, useState } from 'react'
 import api from './api'
+import { DEMO_MODE_ENABLED, PUBLIC_DEMO_MODE } from './demoMode'
 
 const AuthContext = createContext(null)
 
@@ -13,13 +14,26 @@ const DEMO_USERS = {
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(() => {
-    if (!import.meta.env.DEV) return null
+    if (!DEMO_MODE_ENABLED) return null
     const role = localStorage.getItem('petlink_demo_role')
     return DEMO_USERS[role] || null
   })
-  const [loading, setLoading] = useState(() => Boolean(localStorage.getItem('petlink_token') && !(import.meta.env.DEV && localStorage.getItem('petlink_demo_role'))))
+  const [loading, setLoading] = useState(() => !PUBLIC_DEMO_MODE && Boolean(localStorage.getItem('petlink_token') && !(DEMO_MODE_ENABLED && localStorage.getItem('petlink_demo_role'))))
 
   useEffect(() => {
+    if (PUBLIC_DEMO_MODE) {
+      localStorage.removeItem('petlink_token')
+      setLoading(false)
+      return
+    }
+    if (!DEMO_MODE_ENABLED) localStorage.removeItem('petlink_demo_role')
+    const demoRole = DEMO_MODE_ENABLED ? localStorage.getItem('petlink_demo_role') : null
+    if (demoRole && DEMO_USERS[demoRole]) {
+      localStorage.removeItem('petlink_token')
+      setUser(DEMO_USERS[demoRole])
+      setLoading(false)
+      return
+    }
     if (!localStorage.getItem('petlink_token')) return
     api.get('/auth/usuario')
       .then(({ data }) => setUser(data.user))
@@ -31,7 +45,7 @@ export function AuthProvider({ children }) {
   }, [])
 
   const saveSession = (data) => {
-    if (import.meta.env.DEV) localStorage.removeItem('petlink_demo_role')
+    localStorage.removeItem('petlink_demo_role')
     localStorage.setItem('petlink_token', data.token)
     setUser(data.user)
   }
@@ -40,12 +54,13 @@ export function AuthProvider({ children }) {
     user,
     loading,
     login: async (credentials) => {
+      if (PUBLIC_DEMO_MODE) throw new Error('El inicio de sesión real está desactivado en esta demo académica.')
       const { data } = await api.post('/auth/iniciar-sesion', credentials)
       saveSession(data)
       return data.user
     },
     loginDemo: async (role) => {
-      if (!import.meta.env.DEV || !DEMO_USERS[role]) throw new Error('La vista demo solo está disponible durante el desarrollo local.')
+      if (!DEMO_MODE_ENABLED || !DEMO_USERS[role]) throw new Error('La vista demo no está habilitada en este entorno.')
       const demoUser = DEMO_USERS[role]
       localStorage.removeItem('petlink_token')
       localStorage.setItem('petlink_demo_role', role)
@@ -53,6 +68,7 @@ export function AuthProvider({ children }) {
       return demoUser
     },
     register: async (fields) => {
+      if (PUBLIC_DEMO_MODE) throw new Error('El registro real está desactivado en esta demo académica.')
       const { data } = await api.post('/auth/registro', fields)
       saveSession(data)
       return data.user
@@ -67,7 +83,7 @@ export function AuthProvider({ children }) {
         try { await api.post('/auth/cerrar-sesion') } catch { /* The token may already be expired. */ }
       }
       localStorage.removeItem('petlink_token')
-      if (import.meta.env.DEV) localStorage.removeItem('petlink_demo_role')
+      localStorage.removeItem('petlink_demo_role')
       setUser(null)
     },
   }), [user, loading])

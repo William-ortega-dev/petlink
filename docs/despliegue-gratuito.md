@@ -61,13 +61,14 @@ El Session pooler debe permitir migraciones de Laravel. Si un proveedor limita c
 2. Vercel usa `frontend/vercel.json`, `npm run build` y `dist`.
 3. Configura `VITE_API_URL=https://<servicio>.onrender.com/api` como variable de entorno de producción y despliega.
 4. Copia el origen HTTPS asignado a Vercel y úsalo en Render como `FRONTEND_URL`. Verifica que CORS no permita otros orígenes.
-5. Vuelve a probar `/api/health`, inicio de sesión, lectura del catálogo y recarga directa de `/mascotas` y `/panel`.
+5. Para una presentación académica solo visual, define `VITE_DEMO_MODE=true` en producción y despliega. El catálogo y los cinco paneles usan ejemplos ficticios en el navegador; el inicio de sesión real, el registro y las escrituras quedan desactivados en ese modo. Define `VITE_DEMO_MODE=false` para volver al comportamiento conectado a PostgreSQL.
+6. Vuelve a probar `/api/health`, lectura del catálogo y recarga directa de `/mascotas` y `/panel`.
 
 ### 5. Correo y acceso de presentación
 
 Laravel ya tiene rutas de recuperación de contraseña. El `MAIL_MAILER=log` de la configuración de Render solo registra el enlace en los logs; no lo envía por correo. Si se requiere recuperación pública, configura un SMTP/transporte real en el panel del backend y verifica la entrega antes de anunciar esa función.
 
-No hay cuentas con rol de administrador sembradas en producción. El registro público crea adoptantes. Para mostrar los cinco paneles sin cuentas, ejecuta npm run dev y usa las vistas visuales locales del formulario de acceso; son ficticias, no llaman al backend y no guardan cambios. La compilación de producción las excluye. Para probar permisos reales se necesitan cuentas controladas en un entorno de demostración separado. No habilites PETLINK_DEMO_ACCOUNTS en producción.
+No hay cuentas demo con permisos de backend sembradas en producción. `VITE_DEMO_MODE=true` habilita un recorrido visual público y de solo lectura para mostrar los cinco paneles; sus mascotas, estadísticas y actividades son ejemplos del frontend, no registros de PostgreSQL. Las solicitudes demo no se guardan. Para probar permisos y operaciones reales se necesitan cuentas controladas en un entorno separado. No habilites `PETLINK_DEMO_ACCOUNTS` en producción.
 
 ## Verificación posterior
 

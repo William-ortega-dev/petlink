@@ -4,6 +4,7 @@ import api, { messageFromError } from './api'
 import { useAuth } from './AuthContext'
 import PetCard from './components/PetCard'
 import { DEMO_PETS, DEMO_SPECIES, filterDemoPets } from './demoPets'
+import { DEMO_MODE_ENABLED, DEMO_MODE_LABEL, DEMO_ROLES, PUBLIC_DEMO_MODE } from './demoMode'
 
 function Header() {
   const { user, logout } = useAuth()
@@ -27,6 +28,8 @@ function Header() {
               <Link className="nav-link" to="/panel" onClick={() => setOpen(false)}>Mi panel</Link>
               <span className="nav-user">Hola, {user.name.split(' ')[0]}</span>
               <button className="btn btn-sm btn-outline-success rounded-pill px-3" onClick={signOut}>Salir</button>
+            </> : PUBLIC_DEMO_MODE ? <>
+              <Link className="btn btn-success rounded-pill px-4" to="/iniciar-sesion" onClick={() => setOpen(false)}>Demo por roles</Link>
             </> : <>
               <Link className="nav-link" to="/iniciar-sesion" onClick={() => setOpen(false)}>Iniciar sesión</Link>
               <Link className="btn btn-success rounded-pill px-4" to="/registro" onClick={() => setOpen(false)}>Crear cuenta</Link>
@@ -57,17 +60,23 @@ function HomePage() {
   const [loading, setLoading] = useState(true)
   const [demoMode, setDemoMode] = useState(false)
   useEffect(() => {
+    if (PUBLIC_DEMO_MODE) {
+      setPets(DEMO_PETS.slice(0, 3))
+      setDemoMode(true)
+      setLoading(false)
+      return
+    }
     api.get('/mascotas', { params: { per_page: 3 } })
       .then(({ data }) => {
         const availablePets = data.data || []
         if (availablePets.length) setPets(availablePets)
-        else if (import.meta.env.DEV || import.meta.env.VITE_DEMO_MODE === 'true') {
+        else if (DEMO_MODE_ENABLED) {
           setPets(DEMO_PETS.slice(0, 3))
           setDemoMode(true)
         }
       })
       .catch(() => {
-        if (import.meta.env.DEV || import.meta.env.VITE_DEMO_MODE === 'true') {
+        if (DEMO_MODE_ENABLED) {
           setPets(DEMO_PETS.slice(0, 3))
           setDemoMode(true)
         }
@@ -84,7 +93,7 @@ function HomePage() {
             <p>Conecta con refugios y conoce mascotas que buscan un hogar lleno de cariño. Cada adopción responsable empieza con una historia.</p>
             <div className="d-flex flex-wrap gap-3 mt-4">
               <Link to="/mascotas" className="btn btn-success btn-lg rounded-pill px-4">Encontrar mi compañero <span aria-hidden="true">→</span></Link>
-              <Link to="/registro" className="btn btn-outline-success btn-lg rounded-pill px-4">Quiero ayudar</Link>
+              <Link to={PUBLIC_DEMO_MODE ? '/iniciar-sesion' : '/registro'} className="btn btn-outline-success btn-lg rounded-pill px-4">{PUBLIC_DEMO_MODE ? 'Ver demo por roles' : 'Quiero ayudar'}</Link>
             </div>
             <div className="hero-proof mt-5"><div className="proof-avatars"><span>🐶</span><span>🐱</span><span>🐰</span></div><span><strong>Historias que empiezan</strong><br />con un hogar responsable</span></div>
           </div>
@@ -121,7 +130,7 @@ function EmptyState({ title, text }) {
 
 function CatalogPage() {
   const [filters, setFilters] = useState({ q: '', especie_id: '', sexo: '', tamano: '' })
-  const demoAllowed = import.meta.env.DEV || import.meta.env.VITE_DEMO_MODE === 'true'
+  const demoAllowed = DEMO_MODE_ENABLED
   const [species, setSpecies] = useState(demoAllowed ? DEMO_SPECIES : [])
   const [page, setPage] = useState(1)
   const [result, setResult] = useState({ data: [], current_page: 1, last_page: 1 })
@@ -141,6 +150,10 @@ function CatalogPage() {
     setDemoMode(true)
   }
   useEffect(() => {
+    if (PUBLIC_DEMO_MODE) {
+      setSpecies(DEMO_SPECIES)
+      return
+    }
     api.get('/catalogos/especies')
       .then(({ data }) => {
         const availableSpecies = data.data || []
@@ -153,6 +166,11 @@ function CatalogPage() {
     let active = true
     setLoading(true)
     setError('')
+    if (PUBLIC_DEMO_MODE) {
+      showDemoResults(filters, page)
+      setLoading(false)
+      return () => { active = false }
+    }
     if (useLocalDemo) {
       showDemoResults(filters, page)
       setLoading(false)
@@ -210,10 +228,15 @@ function PetDetailPage() {
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
   const [sending, setSending] = useState(false)
-  const demoAllowed = import.meta.env.DEV || import.meta.env.VITE_DEMO_MODE === 'true'
+  const demoAllowed = DEMO_MODE_ENABLED
   useEffect(() => {
     if (demoAllowed && String(id).startsWith('demo-')) {
       setPet(DEMO_PETS.find((item) => item.id === id) || null)
+      setLoading(false)
+      return
+    }
+    if (PUBLIC_DEMO_MODE) {
+      setError('Esta ficha no está incluida en los datos de demostración.')
       setLoading(false)
       return
     }
@@ -261,8 +284,8 @@ function AuthPage({ mode }) {
   const [form, setForm] = useState({ name: '', email: '', telefono: '', password: '', password_confirmation: '' })
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
-  const demoRoles = import.meta.env.DEV ? ['Administrador', 'Adoptante', 'Refugio', 'Veterinario', 'Hogar temporal'] : []
   if (user) return <Navigate to="/panel" replace />
+  if (PUBLIC_DEMO_MODE && isRegister) return <Navigate to="/iniciar-sesion" replace />
   function change(event) { setForm((current) => ({ ...current, [event.target.name]: event.target.value })) }
   async function enterDemo(role) {
     setBusy(true)
@@ -283,19 +306,24 @@ function AuthPage({ mode }) {
     } catch (err) { setError(messageFromError(err)) } finally { setBusy(false) }
   }
   return <main className="container auth-layout">
-    <div className="auth-aside"><span className="eyebrow">PetLink</span><h1>{isRegister ? 'Un nuevo comienzo empieza aquí.' : 'Qué bueno verte de nuevo.'}</h1><p>{isRegister ? 'Crea tu cuenta para iniciar un proceso de adopción responsable y seguir cada paso.' : 'Inicia sesión para consultar tus solicitudes y continuar tu historia.'}</p><div className="auth-paw">🐾</div></div>
-    <div className="auth-card"><h2>{isRegister ? 'Crear cuenta' : 'Iniciar sesión'}</h2><p className="text-secondary mb-4">{isRegister ? 'Regístrate como adoptante para comenzar.' : 'Ingresa con tus datos de PetLink.'}</p>
-      <form onSubmit={submit} className="vstack gap-3">
-        {isRegister && <><Field label="Nombre completo" name="name" value={form.name} onChange={change} required autoComplete="name" /><Field label="Teléfono (opcional)" name="telefono" value={form.telefono} onChange={change} autoComplete="tel" /></>}
-        <Field label="Correo electrónico" name="email" type="email" value={form.email} onChange={change} required autoComplete="email" />
-        <Field label="Contraseña" name="password" type="password" value={form.password} onChange={change} required minLength={isRegister ? 10 : 1} autoComplete={isRegister ? 'new-password' : 'current-password'} />
-        {isRegister && <Field label="Confirmar contraseña" name="password_confirmation" type="password" value={form.password_confirmation} onChange={change} required minLength={10} autoComplete="new-password" />}
-        {!isRegister && import.meta.env.DEV && <details className="demo-login" open><summary>Entrar a una vista de demostración</summary><div className="demo-login-list">{demoRoles.map((role) => <button type="button" className="btn btn-sm btn-outline-success" key={role} disabled={busy} onClick={() => enterDemo(role)}>{role}</button>)}</div><small>Recorrido visual local: no necesita API ni PostgreSQL. Los datos son ficticios y los cambios no se guardan.</small></details>}
-        {error && <div className="alert alert-danger py-2">{error}</div>}
-        <button className="btn btn-success btn-lg rounded-pill w-100 mt-2" disabled={busy}>{busy ? 'Un momento…' : isRegister ? 'Crear mi cuenta' : 'Iniciar sesión'}</button>
-      </form>
-      <p className="auth-switch">{isRegister ? '¿Ya tienes cuenta?' : '¿Primera vez en PetLink?'} <Link to={isRegister ? '/iniciar-sesion' : '/registro'}>{isRegister ? 'Inicia sesión' : 'Regístrate'}</Link></p>
-      {!isRegister && <p className="auth-switch mt-2"><Link to="/recuperar-contrasena">¿Olvidaste tu contraseña?</Link></p>}
+    <div className="auth-aside"><span className="eyebrow">PetLink</span><h1>{PUBLIC_DEMO_MODE ? 'Presentación académica.' : isRegister ? 'Un nuevo comienzo empieza aquí.' : 'Qué bueno verte de nuevo.'}</h1><p>{PUBLIC_DEMO_MODE ? 'Explora el catálogo ficticio y los paneles de los cinco roles.' : isRegister ? 'Crea tu cuenta para iniciar un proceso de adopción responsable y seguir cada paso.' : 'Inicia sesión para consultar tus solicitudes y continuar tu historia.'}</p><div className="auth-paw">🐾</div></div>
+    <div className="auth-card"><h2>{PUBLIC_DEMO_MODE ? 'Elige un panel para presentar' : isRegister ? 'Crear cuenta' : 'Iniciar sesión'}</h2><p className="text-secondary mb-4">{PUBLIC_DEMO_MODE ? 'Cada panel muestra datos ficticios preparados para la exposición.' : isRegister ? 'Regístrate como adoptante para comenzar.' : 'Ingresa con tus datos de PetLink.'}</p>
+      {PUBLIC_DEMO_MODE ? <>
+        <div className="demo-login demo-login-public"><div className="demo-login-list">{DEMO_ROLES.map((role) => <button type="button" className="btn btn-outline-success" key={role} disabled={busy} onClick={() => enterDemo(role)}>Ver como {role}</button>)}</div><small>Es una vista de presentación, no una cuenta real. No llama a la API ni guarda cambios.</small></div>
+        {error && <div className="alert alert-danger py-2 mt-3">{error}</div>}
+      </> : <>
+        <form onSubmit={submit} className="vstack gap-3">
+          {isRegister && <><Field label="Nombre completo" name="name" value={form.name} onChange={change} required autoComplete="name" /><Field label="Teléfono (opcional)" name="telefono" value={form.telefono} onChange={change} autoComplete="tel" /></>}
+          <Field label="Correo electrónico" name="email" type="email" value={form.email} onChange={change} required autoComplete="email" />
+          <Field label="Contraseña" name="password" type="password" value={form.password} onChange={change} required minLength={isRegister ? 10 : 1} autoComplete={isRegister ? 'new-password' : 'current-password'} />
+          {isRegister && <Field label="Confirmar contraseña" name="password_confirmation" type="password" value={form.password_confirmation} onChange={change} required minLength={10} autoComplete="new-password" />}
+          {!isRegister && DEMO_MODE_ENABLED && <details className="demo-login" open><summary>Entrar a una vista de demostración</summary><div className="demo-login-list">{DEMO_ROLES.map((role) => <button type="button" className="btn btn-sm btn-outline-success" key={role} disabled={busy} onClick={() => enterDemo(role)}>{role}</button>)}</div><small>Vista ficticia de presentación. No inicia sesión real ni guarda operaciones.</small></details>}
+          {error && <div className="alert alert-danger py-2">{error}</div>}
+          <button className="btn btn-success btn-lg rounded-pill w-100 mt-2" disabled={busy}>{busy ? 'Un momento…' : isRegister ? 'Crear mi cuenta' : 'Iniciar sesión'}</button>
+        </form>
+        <p className="auth-switch">{isRegister ? '¿Ya tienes cuenta?' : '¿Primera vez en PetLink?'} <Link to={isRegister ? '/iniciar-sesion' : '/registro'}>{isRegister ? 'Inicia sesión' : 'Regístrate'}</Link></p>
+        {!isRegister && <p className="auth-switch mt-2"><Link to="/recuperar-contrasena">¿Olvidaste tu contraseña?</Link></p>}
+      </>}
     </div>
   </main>
 }
@@ -328,7 +356,7 @@ function Field({ label, name, type = 'text', value, onChange, ...props }) {
 }
 
 function DashboardPage() {
-  const { user, refreshUser, logout } = useAuth()
+  const { user, refreshUser, logout, loginDemo } = useAuth()
   const [payload, setPayload] = useState({})
   const [modules, setModules] = useState({})
   const [loading, setLoading] = useState(true)
@@ -388,7 +416,7 @@ function DashboardPage() {
     } catch (err) { setError(messageFromError(err)) } finally { setLoading(false) }
   }, [role])
   useEffect(() => { if (!user.isDemo) load() }, [load, user.isDemo])
-  if (import.meta.env.DEV && user.isDemo) return <DemoDashboardPage user={user} />
+  if (DEMO_MODE_ENABLED && user.isDemo) return <DemoDashboardPage user={user} onSelectRole={loginDemo} />
   async function saveProfile(event) {
     event.preventDefault()
     announce('')
@@ -460,12 +488,13 @@ const DEMO_DASHBOARDS = {
   },
 }
 
-function DemoDashboardPage({ user }) {
+function DemoDashboardPage({ user, onSelectRole }) {
   const role = user.role.nombre
   const dashboard = DEMO_DASHBOARDS[role]
   return <main className="container page-container dashboard-page">
-    <div className="dashboard-heading"><div><span className="eyebrow">Panel de {role}</span><h1>Hola, {user.name.split(' ')[0]}</h1><p>Recorrido visual para explorar las funciones de este rol.</p><span className="role-badge">{role} · Demo local</span></div><span className="user-avatar" aria-label={'Usuario ' + user.name}>{user.name.charAt(0).toUpperCase()}</span></div>
-    <div className="demo-notice" role="status"><strong>Modo demostración local</strong><span>Este panel usa datos ficticios en el navegador. No llama a la API, no cambia PostgreSQL y no guarda operaciones.</span></div>
+    <div className="dashboard-heading"><div><span className="eyebrow">Panel de {role}</span><h1>Hola, {user.name.split(' ')[0]}</h1><p>Recorrido visual para explorar las funciones de este rol.</p><span className="role-badge">{role} · {DEMO_MODE_LABEL}</span></div><span className="user-avatar" aria-label={'Usuario ' + user.name}>{user.name.charAt(0).toUpperCase()}</span></div>
+    <div className="demo-notice" role="status"><strong>{DEMO_MODE_LABEL} · solo lectura</strong><span>Los datos son ficticios. Este panel no inicia sesión real, no llama a la API y no guarda cambios.</span></div>
+    <div className="demo-role-switcher"><strong>Cambiar panel de presentación</strong><div className="demo-login-list">{DEMO_ROLES.map((availableRole) => <button type="button" className={'btn btn-sm ' + (availableRole === role ? 'btn-success' : 'btn-outline-success')} aria-pressed={availableRole === role} key={availableRole} onClick={() => onSelectRole(availableRole)}>{availableRole}</button>)}</div></div>
     <section id="resumen" className="row g-3 stats-row">{dashboard.stats.map(([label, value]) => <div className="col-6 col-xl-3" key={label}><div className="stat-card"><small>{label}</small><strong>{value}</strong></div></div>)}</section>
     <nav className="dashboard-nav" aria-label={'Navegación de demostración ' + role}>{dashboard.sections.map((section, index) => <a key={section.title} href={'#demo-seccion-' + index}>{section.title}</a>)}</nav>
     {dashboard.sections.map((section, index) => <section className="dashboard-section demo-dashboard-section" id={'demo-seccion-' + index} key={section.title}><div className="section-title"><div><span className="eyebrow">{role}</span><h2>{section.title}</h2></div></div><div className="demo-dashboard-items">{section.items.map((item) => <div className="activity-card" key={item}><span>{item}</span><span className="status-pill">Ejemplo</span></div>)}</div></section>)}
@@ -823,5 +852,5 @@ function localDateString() {
 export default function App() {
   const { loading } = useAuth()
   if (loading) return <Loading />
-  return <><Header /><Routes><Route path="/" element={<HomePage />} /><Route path="/mascotas" element={<CatalogPage />} /><Route path="/mascotas/:id" element={<PetDetailPage />} /><Route path="/iniciar-sesion" element={<AuthPage mode="login" />} /><Route path="/registro" element={<AuthPage mode="register" />} /><Route path="/recuperar-contrasena" element={<PasswordRecoveryPage />} /><Route path="/panel" element={<PrivateRoute><DashboardPage /></PrivateRoute>} /><Route path="*" element={<Navigate to="/" replace />} /></Routes><Footer /></>
+  return <><Header /><Routes><Route path="/" element={<HomePage />} /><Route path="/mascotas" element={<CatalogPage />} /><Route path="/mascotas/:id" element={<PetDetailPage />} /><Route path="/iniciar-sesion" element={<AuthPage mode="login" />} /><Route path="/registro" element={<AuthPage mode="register" />} /><Route path="/recuperar-contrasena" element={PUBLIC_DEMO_MODE ? <Navigate to="/iniciar-sesion" replace /> : <PasswordRecoveryPage />} /><Route path="/panel" element={<PrivateRoute><DashboardPage /></PrivateRoute>} /><Route path="*" element={<Navigate to="/" replace />} /></Routes><Footer /></>
 }
