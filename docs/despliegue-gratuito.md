@@ -67,7 +67,7 @@ El Session pooler debe permitir migraciones de Laravel. Si un proveedor limita c
 
 Laravel ya tiene rutas de recuperación de contraseña. El `MAIL_MAILER=log` de la configuración de Render solo registra el enlace en los logs; no lo envía por correo. Si se requiere recuperación pública, configura un SMTP/transporte real en el panel del backend y verifica la entrega antes de anunciar esa función.
 
-No hay cuentas con rol de administrador sembradas en producción. El registro público crea adoptantes. Para presentar los cinco paneles, define una estrategia de acceso temporal que no publique credenciales predecibles y pide autorización antes de crear o divulgar esas cuentas. No habilites el selector de desarrollo ni `PETLINK_DEMO_ACCOUNTS` en producción.
+No hay cuentas con rol de administrador sembradas en producción. El registro público crea adoptantes. Para mostrar los cinco paneles sin cuentas, ejecuta npm run dev y usa las vistas visuales locales del formulario de acceso; son ficticias, no llaman al backend y no guardan cambios. La compilación de producción las excluye. Para probar permisos reales se necesitan cuentas controladas en un entorno de demostración separado. No habilites PETLINK_DEMO_ACCOUNTS en producción.
 
 ## Verificación posterior
 

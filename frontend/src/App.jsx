@@ -256,20 +256,22 @@ function formatSize(size) { return ({ pequeno: 'Pequeño', mediano: 'Mediano', g
 
 function AuthPage({ mode }) {
   const isRegister = mode === 'register'
-  const { user, login, register } = useAuth()
+  const { user, login, loginDemo, register } = useAuth()
   const navigate = useNavigate()
   const [form, setForm] = useState({ name: '', email: '', telefono: '', password: '', password_confirmation: '' })
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
-  const demoAccounts = import.meta.env.DEV ? [
-    ['Administrador', 'admin@petlink.test', 'AdminPetLink2026!'],
-    ['Adoptante', 'adoptante@petlink.test', 'AdoptantePetLink2026!'],
-    ['Refugio', 'refugio@petlink.test', 'RefugioPetLink2026!'],
-    ['Veterinario', 'veterinario@petlink.test', 'Veterinario2026!'],
-    ['Hogar temporal', 'hogar@petlink.test', 'HogarTemporal2026!'],
-  ] : []
+  const demoRoles = import.meta.env.DEV ? ['Administrador', 'Adoptante', 'Refugio', 'Veterinario', 'Hogar temporal'] : []
   if (user) return <Navigate to="/panel" replace />
   function change(event) { setForm((current) => ({ ...current, [event.target.name]: event.target.value })) }
+  async function enterDemo(role) {
+    setBusy(true)
+    setError('')
+    try {
+      await loginDemo(role)
+      navigate('/panel')
+    } catch (err) { setError(err.message || 'No fue posible abrir la vista demo.') } finally { setBusy(false) }
+  }
   async function submit(event) {
     event.preventDefault()
     setBusy(true)
@@ -288,7 +290,7 @@ function AuthPage({ mode }) {
         <Field label="Correo electrónico" name="email" type="email" value={form.email} onChange={change} required autoComplete="email" />
         <Field label="Contraseña" name="password" type="password" value={form.password} onChange={change} required minLength={isRegister ? 10 : 1} autoComplete={isRegister ? 'new-password' : 'current-password'} />
         {isRegister && <Field label="Confirmar contraseña" name="password_confirmation" type="password" value={form.password_confirmation} onChange={change} required minLength={10} autoComplete="new-password" />}
-        {!isRegister && import.meta.env.DEV && <details className="demo-login" open><summary>Rellenar una cuenta de demostración</summary><div className="demo-login-list">{demoAccounts.map(([label, email, password]) => <button type="button" className="btn btn-sm btn-outline-success" key={email} onClick={() => { setError(''); setForm((current) => ({ ...current, email, password })) }}>{label}</button>)}</div><small>El botón rellena este formulario; las cuentas demo requieren API y usuarios existentes en PostgreSQL.</small></details>}
+        {!isRegister && import.meta.env.DEV && <details className="demo-login" open><summary>Entrar a una vista de demostración</summary><div className="demo-login-list">{demoRoles.map((role) => <button type="button" className="btn btn-sm btn-outline-success" key={role} disabled={busy} onClick={() => enterDemo(role)}>{role}</button>)}</div><small>Recorrido visual local: no necesita API ni PostgreSQL. Los datos son ficticios y los cambios no se guardan.</small></details>}
         {error && <div className="alert alert-danger py-2">{error}</div>}
         <button className="btn btn-success btn-lg rounded-pill w-100 mt-2" disabled={busy}>{busy ? 'Un momento…' : isRegister ? 'Crear mi cuenta' : 'Iniciar sesión'}</button>
       </form>
@@ -385,7 +387,8 @@ function DashboardPage() {
       setModules(next)
     } catch (err) { setError(messageFromError(err)) } finally { setLoading(false) }
   }, [role])
-  useEffect(() => { load() }, [load])
+  useEffect(() => { if (!user.isDemo) load() }, [load, user.isDemo])
+  if (import.meta.env.DEV && user.isDemo) return <DemoDashboardPage user={user} />
   async function saveProfile(event) {
     event.preventDefault()
     announce('')
@@ -411,6 +414,62 @@ function DashboardPage() {
     {role === 'Administrador' && <AdminActivity dashboard={payload} />}
     {role === 'Refugio' && <ReportPanel />}
     <div className="dashboard-footer-note"><span>💚</span> Gracias por ser parte de una comunidad que cuida y conecta.</div>
+  </main>
+}
+
+const DEMO_DASHBOARDS = {
+  Administrador: {
+    stats: [['Mascotas', '24'], ['Solicitudes pendientes', '8'], ['Adopciones', '5'], ['Citas de hoy', '3']],
+    sections: [
+      { title: 'Supervisión general', items: ['24 mascotas registradas entre perros, gatos y conejos.', '8 solicitudes esperan revisión.', '5 adopciones formalizadas este mes.'] },
+      { title: 'Usuarios y roles', items: ['Administración: 1 cuenta.', 'Adoptantes: 12 cuentas.', 'Refugios, veterinarios y hogares: actividad de ejemplo.'] },
+      { title: 'Catálogos y auditoría', items: ['Especies y estados disponibles.', 'Actividad administrativa reciente.', 'Módulos de donaciones y seguimientos.'] },
+    ],
+  },
+  Adoptante: {
+    stats: [['Mis solicitudes', '2'], ['En revisión', '1'], ['Adopciones', '1'], ['Seguimientos', '3']],
+    sections: [
+      { title: 'Mis solicitudes', items: ['Luna · En revisión.', 'Toby · Información recibida.'] },
+      { title: 'Mi adopción', items: ['Mora · Adopción activa.', 'Próximo seguimiento: 12 de noviembre.'] },
+      { title: 'Próximos pasos', items: ['Explora el catálogo de mascotas.', 'Consulta el estado de cada proceso desde este panel.'] },
+    ],
+  },
+  Refugio: {
+    stats: [['Mascotas a cargo', '6'], ['Publicaciones activas', '4'], ['Solicitudes pendientes', '2'], ['Adopciones', '2']],
+    sections: [
+      { title: 'Mascotas y publicaciones', items: ['Luna · Publicación activa.', 'Toby · Publicación activa.', 'Mora · Adoptada.'] },
+      { title: 'Solicitudes recibidas', items: ['2 solicitudes de ejemplo esperan revisión.', 'Los registros de otros refugios no aparecen aquí.'] },
+      { title: 'Actividad del refugio', items: ['2 adopciones completadas este mes.', '1 hogar temporal relacionado.'] },
+    ],
+  },
+  Veterinario: {
+    stats: [['Citas próximas', '3'], ['Atenciones del mes', '8'], ['Vacunas aplicadas', '6'], ['Mascotas autorizadas', '4']],
+    sections: [
+      { title: 'Agenda veterinaria', items: ['Hoy · Luna · Control general · 10:30 a. m.', 'Mañana · Toby · Vacunación · 9:00 a. m.'] },
+      { title: 'Atenciones recientes', items: ['Consulta general · observaciones de ejemplo.', 'Vacunas consultables dentro del historial autorizado.'] },
+      { title: 'Registros profesionales', items: ['Historiales visibles solo con autorización.', 'Los cambios médicos no se guardan en este recorrido visual.'] },
+    ],
+  },
+  'Hogar temporal': {
+    stats: [['Mascotas bajo cuidado', '2'], ['Asignaciones activas', '2'], ['Fechas próximas', '1'], ['Acogidas anteriores', '4']],
+    sections: [
+      { title: 'Mis asignaciones activas', items: ['Toby · Desde el 28 de octubre.', 'Nube · Entrega estimada: 15 de noviembre.'] },
+      { title: 'Instrucciones de cuidado', items: ['Alimentación y observaciones autorizadas.', 'Novedades visibles en el historial de acogida.'] },
+      { title: 'Historial de acogidas', items: ['4 asignaciones anteriores de muestra.', 'No puedes alterar asignaciones de otras personas.'] },
+    ],
+  },
+}
+
+function DemoDashboardPage({ user }) {
+  const role = user.role.nombre
+  const dashboard = DEMO_DASHBOARDS[role]
+  return <main className="container page-container dashboard-page">
+    <div className="dashboard-heading"><div><span className="eyebrow">Panel de {role}</span><h1>Hola, {user.name.split(' ')[0]}</h1><p>Recorrido visual para explorar las funciones de este rol.</p><span className="role-badge">{role} · Demo local</span></div><span className="user-avatar" aria-label={'Usuario ' + user.name}>{user.name.charAt(0).toUpperCase()}</span></div>
+    <div className="demo-notice" role="status"><strong>Modo demostración local</strong><span>Este panel usa datos ficticios en el navegador. No llama a la API, no cambia PostgreSQL y no guarda operaciones.</span></div>
+    <section id="resumen" className="row g-3 stats-row">{dashboard.stats.map(([label, value]) => <div className="col-6 col-xl-3" key={label}><div className="stat-card"><small>{label}</small><strong>{value}</strong></div></div>)}</section>
+    <nav className="dashboard-nav" aria-label={'Navegación de demostración ' + role}>{dashboard.sections.map((section, index) => <a key={section.title} href={'#demo-seccion-' + index}>{section.title}</a>)}</nav>
+    {dashboard.sections.map((section, index) => <section className="dashboard-section demo-dashboard-section" id={'demo-seccion-' + index} key={section.title}><div className="section-title"><div><span className="eyebrow">{role}</span><h2>{section.title}</h2></div></div><div className="demo-dashboard-items">{section.items.map((item) => <div className="activity-card" key={item}><span>{item}</span><span className="status-pill">Ejemplo</span></div>)}</div></section>)}
+    <div className="dashboard-footer-note">🐾 <Link to="/mascotas">Explorar el catálogo de ejemplo</Link></div>
   </main>
 }
 

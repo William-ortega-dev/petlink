@@ -141,7 +141,7 @@ En `APP_ENV=local` o `APP_ENV=testing`, `php artisan migrate --seed` crea cuenta
 | Veterinario | `veterinario@petlink.test` | `Veterinario2026!` |
 | Hogar temporal | `hogar@petlink.test` | `HogarTemporal2026!` |
 
-En el inicio de sesión de `Vite dev`, los botones de demostración rellenan el formulario habitual. La autenticación sigue pasando por la API y requiere ejecutar el seeder en PostgreSQL. En producción no se muestran estos botones ni se habilitan las cuentas demo. `frontend/.env.example` solo configura la URL local de la API; no coloques contraseñas en variables `VITE_`, porque el frontend se entrega al navegador.
+En el inicio de sesión de Vite dev, los botones de roles abren paneles visuales con datos ficticios directamente en el navegador. Este recorrido no necesita API ni PostgreSQL y no guarda operaciones. Para probar la autenticación real, inicia Laravel, configura PostgreSQL y crea las cuentas con el seeder; entonces usa los correos y contraseñas de la tabla anterior. El recorrido visual no se incluye en producción. frontend/.env.example configura la URL local de la API; no coloques contraseñas en variables VITE_, porque el frontend se entrega al navegador.
 
 ## Funcionalidades implementadas
 
