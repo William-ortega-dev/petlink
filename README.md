@@ -131,9 +131,17 @@ Verificación de esta actualización: las 3 pruebas unitarias pasaron; `npm run 
 
 ## Cuentas demo de desarrollo
 
-En `APP_ENV=local` o `APP_ENV=testing`, `php artisan migrate --seed` crea cuentas y datos de demostración relacionados solo cuando las cinco contraseñas están configuradas. Define valores aleatorios de al menos 16 caracteres en `backend/.env` (`PETLINK_DEMO_PASSWORD_ADMIN`, `PETLINK_DEMO_PASSWORD_ADOPTER`, `PETLINK_DEMO_PASSWORD_SHELTER`, `PETLINK_DEMO_PASSWORD_VETERINARIAN` y `PETLINK_DEMO_PASSWORD_FOSTER`). El seeder usa `firstOrCreate`: no duplica ni cambia usuarios que ya existan. En otro entorno controlado se necesita además `PETLINK_DEMO_ACCOUNTS=true`; producción siempre los omite. Las contraseñas se guardan con el cast `hashed` del modelo y nunca se devuelven por la API.
+En `APP_ENV=local` o `APP_ENV=testing`, `php artisan migrate --seed` crea cuentas y datos de demostración relacionados cuando las cinco contraseñas están configuradas. `backend/.env.example` trae las credenciales locales de referencia. El seeder usa `firstOrCreate`: no duplica ni cambia usuarios que ya existan. En otro entorno controlado se necesita además `PETLINK_DEMO_ACCOUNTS=true`; producción siempre los omite. Las contraseñas se guardan con el cast `hashed` del modelo y nunca se devuelven por la API.
 
-Para que el selector de `Vite dev` rellene el formulario habitual, copia `frontend/.env.example` como `frontend/.env.local` y coloca allí los mismos cinco valores con el prefijo `VITE_`. Ese archivo es local y está ignorado por Git. El selector solo aparece durante desarrollo y la autenticación sigue pasando por la API. No configures esas variables en el frontend de producción.
+| Rol | Correo | Contraseña local |
+|---|---|---|
+| Administrador | `admin@petlink.test` | `AdminPetLink2026!` |
+| Adoptante | `adoptante@petlink.test` | `AdoptantePetLink2026!` |
+| Refugio | `refugio@petlink.test` | `RefugioPetLink2026!` |
+| Veterinario | `veterinario@petlink.test` | `Veterinario2026!` |
+| Hogar temporal | `hogar@petlink.test` | `HogarTemporal2026!` |
+
+En el inicio de sesión de `Vite dev`, los botones de demostración rellenan el formulario habitual. La autenticación sigue pasando por la API y requiere ejecutar el seeder en PostgreSQL. En producción no se muestran estos botones ni se habilitan las cuentas demo. `frontend/.env.example` solo configura la URL local de la API; no coloques contraseñas en variables `VITE_`, porque el frontend se entrega al navegador.
 
 ## Funcionalidades implementadas
 

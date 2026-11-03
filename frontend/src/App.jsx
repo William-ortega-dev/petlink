@@ -261,13 +261,13 @@ function AuthPage({ mode }) {
   const [form, setForm] = useState({ name: '', email: '', telefono: '', password: '', password_confirmation: '' })
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
-  const demoAccounts = [
-    ['Administrador', 'admin@petlink.test', import.meta.env.VITE_DEMO_PASSWORD_ADMIN],
-    ['Adoptante', 'adoptante@petlink.test', import.meta.env.VITE_DEMO_PASSWORD_ADOPTER],
-    ['Refugio', 'refugio@petlink.test', import.meta.env.VITE_DEMO_PASSWORD_SHELTER],
-    ['Veterinario', 'veterinario@petlink.test', import.meta.env.VITE_DEMO_PASSWORD_VETERINARIAN],
-    ['Hogar temporal', 'hogar@petlink.test', import.meta.env.VITE_DEMO_PASSWORD_FOSTER],
-  ].filter(([, , password]) => typeof password === 'string' && password.length >= 16)
+  const demoAccounts = import.meta.env.DEV ? [
+    ['Administrador', 'admin@petlink.test', 'AdminPetLink2026!'],
+    ['Adoptante', 'adoptante@petlink.test', 'AdoptantePetLink2026!'],
+    ['Refugio', 'refugio@petlink.test', 'RefugioPetLink2026!'],
+    ['Veterinario', 'veterinario@petlink.test', 'Veterinario2026!'],
+    ['Hogar temporal', 'hogar@petlink.test', 'HogarTemporal2026!'],
+  ] : []
   if (user) return <Navigate to="/panel" replace />
   function change(event) { setForm((current) => ({ ...current, [event.target.name]: event.target.value })) }
   async function submit(event) {
@@ -288,7 +288,7 @@ function AuthPage({ mode }) {
         <Field label="Correo electrónico" name="email" type="email" value={form.email} onChange={change} required autoComplete="email" />
         <Field label="Contraseña" name="password" type="password" value={form.password} onChange={change} required minLength={isRegister ? 10 : 1} autoComplete={isRegister ? 'new-password' : 'current-password'} />
         {isRegister && <Field label="Confirmar contraseña" name="password_confirmation" type="password" value={form.password_confirmation} onChange={change} required minLength={10} autoComplete="new-password" />}
-        {!isRegister && import.meta.env.DEV && <details className="demo-login"><summary>Rellenar una cuenta de demostración</summary><div className="demo-login-list">{demoAccounts.map(([label, email, password]) => <button type="button" className="btn btn-sm btn-outline-success" key={email} onClick={() => { setError(''); setForm((current) => ({ ...current, email, password })) }}>{label}</button>)}</div><small>Se inicia sesión mediante este formulario; las cuentas solo se habilitan en desarrollo.</small></details>}
+        {!isRegister && import.meta.env.DEV && <details className="demo-login" open><summary>Rellenar una cuenta de demostración</summary><div className="demo-login-list">{demoAccounts.map(([label, email, password]) => <button type="button" className="btn btn-sm btn-outline-success" key={email} onClick={() => { setError(''); setForm((current) => ({ ...current, email, password })) }}>{label}</button>)}</div><small>El botón rellena este formulario; las cuentas demo requieren API y usuarios existentes en PostgreSQL.</small></details>}
         {error && <div className="alert alert-danger py-2">{error}</div>}
         <button className="btn btn-success btn-lg rounded-pill w-100 mt-2" disabled={busy}>{busy ? 'Un momento…' : isRegister ? 'Crear mi cuenta' : 'Iniciar sesión'}</button>
       </form>
