@@ -3,6 +3,7 @@ import { Link, Navigate, Route, Routes, useNavigate, useParams, useSearchParams 
 import api, { messageFromError } from './api'
 import { useAuth } from './AuthContext'
 import PetCard from './components/PetCard'
+import { DEMO_PETS, DEMO_SPECIES, filterDemoPets } from './demoPets'
 
 function Header() {
   const { user, logout } = useAuth()
@@ -54,10 +55,23 @@ function Footer() {
 function HomePage() {
   const [pets, setPets] = useState([])
   const [loading, setLoading] = useState(true)
+  const [demoMode, setDemoMode] = useState(false)
   useEffect(() => {
     api.get('/mascotas', { params: { per_page: 3 } })
-      .then(({ data }) => setPets(data.data || []))
-      .catch(() => setPets([]))
+      .then(({ data }) => {
+        const availablePets = data.data || []
+        if (availablePets.length) setPets(availablePets)
+        else if (import.meta.env.DEV || import.meta.env.VITE_DEMO_MODE === 'true') {
+          setPets(DEMO_PETS.slice(0, 3))
+          setDemoMode(true)
+        }
+      })
+      .catch(() => {
+        if (import.meta.env.DEV || import.meta.env.VITE_DEMO_MODE === 'true') {
+          setPets(DEMO_PETS.slice(0, 3))
+          setDemoMode(true)
+        }
+      })
       .finally(() => setLoading(false))
   }, [])
   return <>
@@ -83,6 +97,7 @@ function HomePage() {
       <section className="section-space bg-soft">
         <div className="container">
           <div className="section-heading"><div><span className="eyebrow">Encuentros que cambian todo</span><h2>Alguien especial te espera</h2><p>Conoce algunas mascotas disponibles para adopción.</p></div><Link className="text-link" to="/mascotas">Ver todas las mascotas <span aria-hidden="true">→</span></Link></div>
+          {demoMode && <div className="demo-notice" role="status"><strong>Vista de demostración</strong><span>Estas mascotas son datos de ejemplo; explora sus fichas en el catálogo.</span></div>}
           {loading ? <Loading /> : pets.length ? <div className="row g-4">{pets.map((pet) => <div className="col-md-6 col-lg-4" key={pet.id}><PetCard pet={pet} /></div>)}</div> : <EmptyState title="Pronto habrá nuevas historias" text="Vuelve a visitar el catálogo de adopciones." />}
         </div>
       </section>
@@ -106,22 +121,64 @@ function EmptyState({ title, text }) {
 
 function CatalogPage() {
   const [filters, setFilters] = useState({ q: '', especie_id: '', sexo: '', tamano: '' })
-  const [species, setSpecies] = useState([])
+  const demoAllowed = import.meta.env.DEV || import.meta.env.VITE_DEMO_MODE === 'true'
+  const [species, setSpecies] = useState(demoAllowed ? DEMO_SPECIES : [])
   const [page, setPage] = useState(1)
   const [result, setResult] = useState({ data: [], current_page: 1, last_page: 1 })
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-  useEffect(() => { api.get('/catalogos/especies').then(({ data }) => setSpecies(data.data || [])).catch(() => {}) }, [])
+  const [demoMode, setDemoMode] = useState(false)
+  const [useLocalDemo, setUseLocalDemo] = useState(false)
+  function showDemoResults(selectedFilters, selectedPage) {
+    const pets = filterDemoPets(selectedFilters)
+    const perPage = 9
+    setResult({
+      data: pets.slice((selectedPage - 1) * perPage, selectedPage * perPage),
+      current_page: selectedPage,
+      last_page: Math.max(1, Math.ceil(pets.length / perPage)),
+      total: pets.length,
+    })
+    setDemoMode(true)
+  }
+  useEffect(() => {
+    api.get('/catalogos/especies')
+      .then(({ data }) => {
+        const availableSpecies = data.data || []
+        if (availableSpecies.length) setSpecies(availableSpecies)
+        else if (demoAllowed) setSpecies(DEMO_SPECIES)
+      })
+      .catch(() => { if (demoAllowed) setSpecies(DEMO_SPECIES) })
+  }, [demoAllowed])
   useEffect(() => {
     let active = true
     setLoading(true)
     setError('')
+    if (useLocalDemo) {
+      showDemoResults(filters, page)
+      setLoading(false)
+      return () => { active = false }
+    }
     api.get('/mascotas', { params: { ...filters, page, per_page: 9 } })
-      .then(({ data }) => { if (active) setResult(data) })
-      .catch((err) => { if (active) setError(messageFromError(err)) })
+      .then(({ data }) => {
+        if (!active) return
+        if (demoAllowed && !(data.data || []).length && !filters.q && !filters.especie_id && !filters.sexo && !filters.tamano) {
+          setUseLocalDemo(true)
+          showDemoResults(filters, page)
+        } else {
+          setResult(data)
+          setDemoMode(false)
+        }
+      })
+      .catch((err) => {
+        if (!active) return
+        if (demoAllowed) {
+          setUseLocalDemo(true)
+          showDemoResults(filters, page)
+        } else setError(messageFromError(err))
+      })
       .finally(() => { if (active) setLoading(false) })
     return () => { active = false }
-  }, [filters, page])
+  }, [filters, page, useLocalDemo, demoAllowed])
   function changeFilter(event) {
     setFilters((current) => ({ ...current, [event.target.name]: event.target.value }))
     setPage(1)
@@ -135,10 +192,11 @@ function CatalogPage() {
       <div className="col-6 col-lg-2"><label className="form-label" htmlFor="size">Tamaño</label><select id="size" className="form-select" name="tamano" value={filters.tamano} onChange={changeFilter}><option value="">Todos</option><option value="pequeno">Pequeño</option><option value="mediano">Mediano</option><option value="grande">Grande</option></select></div>
       <div className="col-6 col-lg-2"><button className="btn btn-outline-success w-100" onClick={() => { setFilters({ q: '', especie_id: '', sexo: '', tamano: '' }); setPage(1) }}>Limpiar filtros</button></div>
     </div>
+    {demoMode && <div className="demo-notice" role="status"><strong>Modo demostración</strong><span>Estás viendo mascotas de ejemplo. Puedes buscar, filtrar y abrir sus fichas; las solicitudes no se guardan.</span></div>}
     {error && <div className="alert alert-danger">{error}</div>}
     {loading ? <Loading /> : result.data?.length ? <>
       <div className="row g-4">{result.data.map((pet) => <div className="col-md-6 col-lg-4" key={pet.id}><PetCard pet={pet} /></div>)}</div>
-      <div className="pagination-row"><button className="btn btn-outline-success rounded-pill" disabled={page <= 1} onClick={() => setPage(page - 1)}>← Anterior</button><span>Página {result.current_page || page} de {result.last_page || 1}</span><button className="btn btn-outline-success rounded-pill" disabled={page >= result.last_page} onClick={() => setPage(page + 1)}>Siguiente →</button></div>
+      {result.last_page > 1 && <div className="pagination-row"><button className="btn btn-outline-success rounded-pill" disabled={page <= 1} onClick={() => setPage(page - 1)}>← Anterior</button><span>Página {result.current_page || page} de {result.last_page || 1}</span><button className="btn btn-outline-success rounded-pill" disabled={page >= result.last_page} onClick={() => setPage(page + 1)}>Siguiente →</button></div>}
     </> : <EmptyState title="No encontramos coincidencias" text="Prueba con otros filtros o vuelve más tarde." />}
   </main>
 }
@@ -152,10 +210,20 @@ function PetDetailPage() {
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
   const [sending, setSending] = useState(false)
+  const demoAllowed = import.meta.env.DEV || import.meta.env.VITE_DEMO_MODE === 'true'
   useEffect(() => {
+    if (demoAllowed && String(id).startsWith('demo-')) {
+      setPet(DEMO_PETS.find((item) => item.id === id) || null)
+      setLoading(false)
+      return
+    }
     api.get('/mascotas/' + id).then(({ data }) => setPet(data.mascota)).catch((err) => setError(messageFromError(err))).finally(() => setLoading(false))
-  }, [id])
+  }, [id, demoAllowed])
   async function apply() {
+    if (pet?.demo) {
+      setNotice('Estás en modo demostración. La solicitud es solo de muestra y no se guarda.')
+      return
+    }
     if (!user) return navigate('/iniciar-sesion')
     setSending(true)
     setNotice('')
@@ -169,9 +237,10 @@ function PetDetailPage() {
   if (!pet) return null
   return <main className="container page-container">
     <Link to="/mascotas" className="back-link">← Volver al catálogo</Link>
+    {pet.demo && <div className="demo-notice mt-3" role="status"><strong>Ficha de demostración</strong><span>Los datos de esta mascota son ficticios y se muestran para explorar PetLink.</span></div>}
     <div className="detail-layout mt-4">
-      <div className="detail-photo">{pet.fotografia ? <img src={pet.fotografia} alt={pet.nombre} /> : <span>{pet.especie?.nombre === 'Gato' ? '🐱' : '🐶'}</span>}</div>
-      <div className="detail-copy"><span className="eyebrow">{pet.especie?.nombre}{pet.raza?.nombre ? ' · ' + pet.raza.nombre : ''}</span><h1>{pet.nombre}</h1><p className="lead">{pet.descripcion || 'Una nueva historia está por comenzar.'}</p><div className="pet-facts"><Fact label="Edad" value={pet.edad_estimada_anios ? pet.edad_estimada_anios + ' años' : 'Por conocer'} /><Fact label="Sexo" value={pet.sexo || 'Por conocer'} /><Fact label="Tamaño" value={pet.tamano || 'Por conocer'} /><Fact label="Estado" value={pet.estado?.nombre || 'Disponible'} /></div>
+      <div className="detail-photo">{pet.fotografia ? <img src={pet.fotografia} alt={pet.nombre} /> : <span>{pet.emoji || (pet.especie?.nombre === 'Gato' ? '🐱' : '🐶')}</span>}</div>
+      <div className="detail-copy"><span className="eyebrow">{pet.especie?.nombre}{pet.raza?.nombre ? ' · ' + pet.raza.nombre : ''}</span><h1>{pet.nombre}</h1><p className="lead">{pet.descripcion || 'Una nueva historia está por comenzar.'}</p><div className="pet-facts"><Fact label="Edad" value={formatAge(pet.edad_estimada_anios)} /><Fact label="Sexo" value={pet.sexo || 'Por conocer'} /><Fact label="Tamaño" value={formatSize(pet.tamano)} /><Fact label="Estado" value={pet.estado?.nombre || 'Disponible'} /></div>
         {pet.refugio && <div className="shelter-card"><span className="shelter-icon">🏡</span><div><strong>{pet.refugio.nombre}</strong><small>{[pet.refugio.municipio, pet.refugio.departamento].filter(Boolean).join(', ') || 'Colombia'}</small></div></div>}
         {notice && <div className="alert alert-success mt-3">{notice}</div>}
         {pet.publicacion_id && pet.estado?.codigo === 'disponible' && <button className="btn btn-success btn-lg rounded-pill mt-4 px-5" disabled={sending} onClick={apply}>{sending ? 'Enviando…' : 'Quiero conocer a ' + pet.nombre}</button>}
@@ -182,6 +251,8 @@ function PetDetailPage() {
 }
 
 function Fact({ label, value }) { return <div className="fact"><small>{label}</small><strong>{value}</strong></div> }
+function formatAge(age) { return age ? `${age} ${Number(age) === 1 ? 'año' : 'años'}` : 'Por conocer' }
+function formatSize(size) { return ({ pequeno: 'Pequeño', mediano: 'Mediano', grande: 'Grande' })[size] || size || 'Por conocer' }
 
 function AuthPage({ mode }) {
   const isRegister = mode === 'register'
