@@ -3,8 +3,10 @@ import { Link, Navigate, Route, Routes, useNavigate, useParams, useSearchParams 
 import api, { messageFromError } from './api'
 import { useAuth } from './AuthContext'
 import PetCard from './components/PetCard'
-import { DEMO_PETS, DEMO_SPECIES, filterDemoPets } from './demoPets'
-import { DEMO_MODE_ENABLED, DEMO_MODE_LABEL, DEMO_ROLES, PUBLIC_DEMO_MODE } from './demoMode'
+import { DEMO_SPECIES, filterDemoPets } from './demoPets'
+import { DEMO_MODE_ENABLED, DEMO_ROLES, PUBLIC_DEMO_MODE } from './demoMode'
+import { useDemoData } from './useDemoData'
+import DemoDashboard from './DemoDashboard'
 
 function Header() {
   const { user, logout } = useAuth()
@@ -56,12 +58,13 @@ function Footer() {
 }
 
 function HomePage() {
+  const { state: demoState } = useDemoData()
   const [pets, setPets] = useState([])
   const [loading, setLoading] = useState(true)
   const [demoMode, setDemoMode] = useState(false)
   useEffect(() => {
     if (PUBLIC_DEMO_MODE) {
-      setPets(DEMO_PETS.slice(0, 3))
+      setPets(demoState.pets.filter((pet) => pet.publicada && pet.estado?.codigo === 'disponible').slice(0, 3))
       setDemoMode(true)
       setLoading(false)
       return
@@ -71,18 +74,18 @@ function HomePage() {
         const availablePets = data.data || []
         if (availablePets.length) setPets(availablePets)
         else if (DEMO_MODE_ENABLED) {
-          setPets(DEMO_PETS.slice(0, 3))
+          setPets(demoState.pets.filter((pet) => pet.publicada && pet.estado?.codigo === 'disponible').slice(0, 3))
           setDemoMode(true)
         }
       })
       .catch(() => {
         if (DEMO_MODE_ENABLED) {
-          setPets(DEMO_PETS.slice(0, 3))
+          setPets(demoState.pets.filter((pet) => pet.publicada && pet.estado?.codigo === 'disponible').slice(0, 3))
           setDemoMode(true)
         }
       })
       .finally(() => setLoading(false))
-  }, [])
+  }, [demoState.pets])
   return <>
     <main>
       <section className="hero-section">
@@ -129,17 +132,18 @@ function EmptyState({ title, text }) {
 }
 
 function CatalogPage() {
+  const { state: demoState } = useDemoData()
   const [filters, setFilters] = useState({ q: '', especie_id: '', sexo: '', tamano: '' })
   const demoAllowed = DEMO_MODE_ENABLED
-  const [species, setSpecies] = useState(demoAllowed ? DEMO_SPECIES : [])
+  const [species, setSpecies] = useState(demoAllowed ? demoState.species : [])
   const [page, setPage] = useState(1)
   const [result, setResult] = useState({ data: [], current_page: 1, last_page: 1 })
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [demoMode, setDemoMode] = useState(false)
   const [useLocalDemo, setUseLocalDemo] = useState(false)
-  function showDemoResults(selectedFilters, selectedPage) {
-    const pets = filterDemoPets(selectedFilters)
+  const showDemoResults = useCallback((selectedFilters, selectedPage) => {
+    const pets = filterDemoPets(demoState.pets.filter((pet) => pet.publicada && pet.estado?.codigo === 'disponible'), selectedFilters)
     const perPage = 9
     setResult({
       data: pets.slice((selectedPage - 1) * perPage, selectedPage * perPage),
@@ -148,20 +152,20 @@ function CatalogPage() {
       total: pets.length,
     })
     setDemoMode(true)
-  }
+  }, [demoState.pets])
   useEffect(() => {
     if (PUBLIC_DEMO_MODE) {
-      setSpecies(DEMO_SPECIES)
+      setSpecies(demoState.species)
       return
     }
     api.get('/catalogos/especies')
       .then(({ data }) => {
         const availableSpecies = data.data || []
         if (availableSpecies.length) setSpecies(availableSpecies)
-        else if (demoAllowed) setSpecies(DEMO_SPECIES)
+        else if (demoAllowed) setSpecies(demoState.species)
       })
-      .catch(() => { if (demoAllowed) setSpecies(DEMO_SPECIES) })
-  }, [demoAllowed])
+      .catch(() => { if (demoAllowed) setSpecies(demoState.species) })
+  }, [demoAllowed, demoState.species])
   useEffect(() => {
     let active = true
     setLoading(true)
@@ -196,7 +200,7 @@ function CatalogPage() {
       })
       .finally(() => { if (active) setLoading(false) })
     return () => { active = false }
-  }, [filters, page, useLocalDemo, demoAllowed])
+  }, [filters, page, useLocalDemo, demoAllowed, demoState.pets, showDemoResults])
   function changeFilter(event) {
     setFilters((current) => ({ ...current, [event.target.name]: event.target.value }))
     setPage(1)
@@ -210,7 +214,7 @@ function CatalogPage() {
       <div className="col-6 col-lg-2"><label className="form-label" htmlFor="size">Tamaño</label><select id="size" className="form-select" name="tamano" value={filters.tamano} onChange={changeFilter}><option value="">Todos</option><option value="pequeno">Pequeño</option><option value="mediano">Mediano</option><option value="grande">Grande</option></select></div>
       <div className="col-6 col-lg-2"><button className="btn btn-outline-success w-100" onClick={() => { setFilters({ q: '', especie_id: '', sexo: '', tamano: '' }); setPage(1) }}>Limpiar filtros</button></div>
     </div>
-    {demoMode && <div className="demo-notice" role="status"><strong>Modo demostración</strong><span>Estás viendo mascotas de ejemplo. Puedes buscar, filtrar y abrir sus fichas; las solicitudes no se guardan.</span></div>}
+    {demoMode && <div className="demo-notice" role="status"><strong>Modo demostración</strong><span>Las fichas y solicitudes se actualizan durante el recorrido y quedan guardadas solo en este navegador.</span></div>}
     {error && <div className="alert alert-danger">{error}</div>}
     {loading ? <Loading /> : result.data?.length ? <>
       <div className="row g-4">{result.data.map((pet) => <div className="col-md-6 col-lg-4" key={pet.id}><PetCard pet={pet} /></div>)}</div>
@@ -220,18 +224,21 @@ function CatalogPage() {
 }
 
 function PetDetailPage() {
+  const { state: demoState, actions } = useDemoData()
   const { id } = useParams()
-  const { user } = useAuth()
+  const { user, loginDemo } = useAuth()
   const navigate = useNavigate()
   const [pet, setPet] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
+  const [motivation, setMotivation] = useState('Quiero conocer más sobre esta mascota y puedo ofrecerle un hogar responsable.')
   const [sending, setSending] = useState(false)
+  const demoUser = user?.isDemo ? { ...user, name: demoState.profiles[user.id]?.name || user.name } : user
   const demoAllowed = DEMO_MODE_ENABLED
   useEffect(() => {
     if (demoAllowed && String(id).startsWith('demo-')) {
-      setPet(DEMO_PETS.find((item) => item.id === id) || null)
+      setPet(demoState.pets.find((item) => item.id === id) || null)
       setLoading(false)
       return
     }
@@ -241,10 +248,18 @@ function PetDetailPage() {
       return
     }
     api.get('/mascotas/' + id).then(({ data }) => setPet(data.mascota)).catch((err) => setError(messageFromError(err))).finally(() => setLoading(false))
-  }, [id, demoAllowed])
+  }, [id, demoAllowed, demoState.pets])
   async function apply() {
     if (pet?.demo) {
-      setNotice('Estás en modo demostración. La solicitud es solo de muestra y no se guarda.')
+      if (!demoUser) return navigate('/iniciar-sesion')
+      if (demoUser.role?.nombre !== 'Adoptante') {
+        setNotice('Cambia al rol Adoptante en el menú de demostración para enviar una solicitud.')
+        return
+      }
+      try {
+        actions.submitAdoptionRequest(pet.id, demoUser, motivation)
+        setNotice(`Solicitud enviada para ${pet.nombre}. El refugio puede revisarla desde su panel.`)
+      } catch (err) { setNotice(err.message) }
       return
     }
     if (!user) return navigate('/iniciar-sesion')
@@ -265,9 +280,11 @@ function PetDetailPage() {
       <div className="detail-photo">{pet.fotografia ? <img src={pet.fotografia} alt={pet.nombre} /> : <span>{pet.emoji || (pet.especie?.nombre === 'Gato' ? '🐱' : '🐶')}</span>}</div>
       <div className="detail-copy"><span className="eyebrow">{pet.especie?.nombre}{pet.raza?.nombre ? ' · ' + pet.raza.nombre : ''}</span><h1>{pet.nombre}</h1><p className="lead">{pet.descripcion || 'Una nueva historia está por comenzar.'}</p><div className="pet-facts"><Fact label="Edad" value={formatAge(pet.edad_estimada_anios)} /><Fact label="Sexo" value={pet.sexo || 'Por conocer'} /><Fact label="Tamaño" value={formatSize(pet.tamano)} /><Fact label="Estado" value={pet.estado?.nombre || 'Disponible'} /></div>
         {pet.refugio && <div className="shelter-card"><span className="shelter-icon">🏡</span><div><strong>{pet.refugio.nombre}</strong><small>{[pet.refugio.municipio, pet.refugio.departamento].filter(Boolean).join(', ') || 'Colombia'}</small></div></div>}
-        {notice && <div className="alert alert-success mt-3">{notice}</div>}
-        {pet.publicacion_id && pet.estado?.codigo === 'disponible' && <button className="btn btn-success btn-lg rounded-pill mt-4 px-5" disabled={sending} onClick={apply}>{sending ? 'Enviando…' : 'Quiero conocer a ' + pet.nombre}</button>}
-        {!user && <p className="small text-secondary mt-3">Necesitas una cuenta para enviar una solicitud.</p>}
+        {notice && <div className="alert alert-info mt-3" role="status">{notice}</div>}
+        {pet.demo && user?.role?.nombre === 'Adoptante' && pet.estado?.codigo === 'disponible' && <div className="mt-4"><label className="form-label" htmlFor="demo-motivation">Cuéntale al refugio por qué quieres adoptar</label><textarea id="demo-motivation" className="form-control" rows="3" value={motivation} onChange={(event) => setMotivation(event.target.value)} /><button className="btn btn-success btn-lg rounded-pill mt-3 px-5" disabled={sending || demoState.requests.some((item) => item.pet_id === pet.id && item.adopter_id === user.id && ['Pendiente', 'En revisión'].includes(item.status))} onClick={apply}>{demoState.requests.some((item) => item.pet_id === pet.id && item.adopter_id === user.id && ['Pendiente', 'En revisión'].includes(item.status)) ? 'Solicitud enviada' : 'Quiero conocer a ' + pet.nombre}</button></div>}
+        {pet.demo && demoUser && demoUser.role?.nombre !== 'Adoptante' && pet.estado?.codigo === 'disponible' && <button className="btn btn-outline-success mt-4" onClick={async () => { await loginDemo('Adoptante'); setNotice('Ahora estás en el rol Adoptante. Puedes enviar tu solicitud aquí mismo.') }}>Cambiar al rol Adoptante para solicitar</button>}
+        {!demoUser && <p className="small text-secondary mt-3">Elige el rol Adoptante en Demo por roles para enviar una solicitud de muestra.</p>}
+        {pet.estado?.codigo !== 'disponible' && <span className="status-pill mt-3 d-inline-flex">{pet.estado?.nombre || 'No disponible'}</span>}
       </div>
     </div>
   </main>
@@ -309,7 +326,7 @@ function AuthPage({ mode }) {
     <div className="auth-aside"><span className="eyebrow">PetLink</span><h1>{PUBLIC_DEMO_MODE ? 'Presentación académica.' : isRegister ? 'Un nuevo comienzo empieza aquí.' : 'Qué bueno verte de nuevo.'}</h1><p>{PUBLIC_DEMO_MODE ? 'Explora el catálogo ficticio y los paneles de los cinco roles.' : isRegister ? 'Crea tu cuenta para iniciar un proceso de adopción responsable y seguir cada paso.' : 'Inicia sesión para consultar tus solicitudes y continuar tu historia.'}</p><div className="auth-paw">🐾</div></div>
     <div className="auth-card"><h2>{PUBLIC_DEMO_MODE ? 'Elige un panel para presentar' : isRegister ? 'Crear cuenta' : 'Iniciar sesión'}</h2><p className="text-secondary mb-4">{PUBLIC_DEMO_MODE ? 'Cada panel muestra datos ficticios preparados para la exposición.' : isRegister ? 'Regístrate como adoptante para comenzar.' : 'Ingresa con tus datos de PetLink.'}</p>
       {PUBLIC_DEMO_MODE ? <>
-        <div className="demo-login demo-login-public"><div className="demo-login-list">{DEMO_ROLES.map((role) => <button type="button" className="btn btn-outline-success" key={role} disabled={busy} onClick={() => enterDemo(role)}>Ver como {role}</button>)}</div><small>Es una vista de presentación, no una cuenta real. No llama a la API ni guarda cambios.</small></div>
+        <div className="demo-login demo-login-public"><div className="demo-login-list">{DEMO_ROLES.map((role) => <button type="button" className="btn btn-outline-success" key={role} disabled={busy} onClick={() => enterDemo(role)}>Ver como {role}</button>)}</div><small>Es una demo interactiva con datos ficticios. Los cambios quedan en este navegador y nunca se envían a PostgreSQL.</small></div>
         {error && <div className="alert alert-danger py-2 mt-3">{error}</div>}
       </> : <>
         <form onSubmit={submit} className="vstack gap-3">
@@ -317,7 +334,7 @@ function AuthPage({ mode }) {
           <Field label="Correo electrónico" name="email" type="email" value={form.email} onChange={change} required autoComplete="email" />
           <Field label="Contraseña" name="password" type="password" value={form.password} onChange={change} required minLength={isRegister ? 10 : 1} autoComplete={isRegister ? 'new-password' : 'current-password'} />
           {isRegister && <Field label="Confirmar contraseña" name="password_confirmation" type="password" value={form.password_confirmation} onChange={change} required minLength={10} autoComplete="new-password" />}
-          {!isRegister && DEMO_MODE_ENABLED && <details className="demo-login" open><summary>Entrar a una vista de demostración</summary><div className="demo-login-list">{DEMO_ROLES.map((role) => <button type="button" className="btn btn-sm btn-outline-success" key={role} disabled={busy} onClick={() => enterDemo(role)}>{role}</button>)}</div><small>Vista ficticia de presentación. No inicia sesión real ni guarda operaciones.</small></details>}
+          {!isRegister && DEMO_MODE_ENABLED && <details className="demo-login" open><summary>Entrar a una vista de demostración</summary><div className="demo-login-list">{DEMO_ROLES.map((role) => <button type="button" className="btn btn-sm btn-outline-success" key={role} disabled={busy} onClick={() => enterDemo(role)}>{role}</button>)}</div><small>Datos inventados; las acciones se guardan solo en este navegador, sin iniciar sesión real.</small></details>}
           {error && <div className="alert alert-danger py-2">{error}</div>}
           <button className="btn btn-success btn-lg rounded-pill w-100 mt-2" disabled={busy}>{busy ? 'Un momento…' : isRegister ? 'Crear mi cuenta' : 'Iniciar sesión'}</button>
         </form>
@@ -416,7 +433,7 @@ function DashboardPage() {
     } catch (err) { setError(messageFromError(err)) } finally { setLoading(false) }
   }, [role])
   useEffect(() => { if (!user.isDemo) load() }, [load, user.isDemo])
-  if (DEMO_MODE_ENABLED && user.isDemo) return <DemoDashboardPage user={user} onSelectRole={loginDemo} />
+  if (DEMO_MODE_ENABLED && user.isDemo) return <DemoDashboard user={user} onSelectRole={loginDemo} />
   async function saveProfile(event) {
     event.preventDefault()
     announce('')
@@ -442,63 +459,6 @@ function DashboardPage() {
     {role === 'Administrador' && <AdminActivity dashboard={payload} />}
     {role === 'Refugio' && <ReportPanel />}
     <div className="dashboard-footer-note"><span>💚</span> Gracias por ser parte de una comunidad que cuida y conecta.</div>
-  </main>
-}
-
-const DEMO_DASHBOARDS = {
-  Administrador: {
-    stats: [['Mascotas', '24'], ['Solicitudes pendientes', '8'], ['Adopciones', '5'], ['Citas de hoy', '3']],
-    sections: [
-      { title: 'Supervisión general', items: ['24 mascotas registradas entre perros, gatos y conejos.', '8 solicitudes esperan revisión.', '5 adopciones formalizadas este mes.'] },
-      { title: 'Usuarios y roles', items: ['Administración: 1 cuenta.', 'Adoptantes: 12 cuentas.', 'Refugios, veterinarios y hogares: actividad de ejemplo.'] },
-      { title: 'Catálogos y auditoría', items: ['Especies y estados disponibles.', 'Actividad administrativa reciente.', 'Módulos de donaciones y seguimientos.'] },
-    ],
-  },
-  Adoptante: {
-    stats: [['Mis solicitudes', '2'], ['En revisión', '1'], ['Adopciones', '1'], ['Seguimientos', '3']],
-    sections: [
-      { title: 'Mis solicitudes', items: ['Luna · En revisión.', 'Toby · Información recibida.'] },
-      { title: 'Mi adopción', items: ['Mora · Adopción activa.', 'Próximo seguimiento: 12 de noviembre.'] },
-      { title: 'Próximos pasos', items: ['Explora el catálogo de mascotas.', 'Consulta el estado de cada proceso desde este panel.'] },
-    ],
-  },
-  Refugio: {
-    stats: [['Mascotas a cargo', '6'], ['Publicaciones activas', '4'], ['Solicitudes pendientes', '2'], ['Adopciones', '2']],
-    sections: [
-      { title: 'Mascotas y publicaciones', items: ['Luna · Publicación activa.', 'Toby · Publicación activa.', 'Mora · Adoptada.'] },
-      { title: 'Solicitudes recibidas', items: ['2 solicitudes de ejemplo esperan revisión.', 'Los registros de otros refugios no aparecen aquí.'] },
-      { title: 'Actividad del refugio', items: ['2 adopciones completadas este mes.', '1 hogar temporal relacionado.'] },
-    ],
-  },
-  Veterinario: {
-    stats: [['Citas próximas', '3'], ['Atenciones del mes', '8'], ['Vacunas aplicadas', '6'], ['Mascotas autorizadas', '4']],
-    sections: [
-      { title: 'Agenda veterinaria', items: ['Hoy · Luna · Control general · 10:30 a. m.', 'Mañana · Toby · Vacunación · 9:00 a. m.'] },
-      { title: 'Atenciones recientes', items: ['Consulta general · observaciones de ejemplo.', 'Vacunas consultables dentro del historial autorizado.'] },
-      { title: 'Registros profesionales', items: ['Historiales visibles solo con autorización.', 'Los cambios médicos no se guardan en este recorrido visual.'] },
-    ],
-  },
-  'Hogar temporal': {
-    stats: [['Mascotas bajo cuidado', '2'], ['Asignaciones activas', '2'], ['Fechas próximas', '1'], ['Acogidas anteriores', '4']],
-    sections: [
-      { title: 'Mis asignaciones activas', items: ['Toby · Desde el 28 de octubre.', 'Nube · Entrega estimada: 15 de noviembre.'] },
-      { title: 'Instrucciones de cuidado', items: ['Alimentación y observaciones autorizadas.', 'Novedades visibles en el historial de acogida.'] },
-      { title: 'Historial de acogidas', items: ['4 asignaciones anteriores de muestra.', 'No puedes alterar asignaciones de otras personas.'] },
-    ],
-  },
-}
-
-function DemoDashboardPage({ user, onSelectRole }) {
-  const role = user.role.nombre
-  const dashboard = DEMO_DASHBOARDS[role]
-  return <main className="container page-container dashboard-page">
-    <div className="dashboard-heading"><div><span className="eyebrow">Panel de {role}</span><h1>Hola, {user.name.split(' ')[0]}</h1><p>Recorrido visual para explorar las funciones de este rol.</p><span className="role-badge">{role} · {DEMO_MODE_LABEL}</span></div><span className="user-avatar" aria-label={'Usuario ' + user.name}>{user.name.charAt(0).toUpperCase()}</span></div>
-    <div className="demo-notice" role="status"><strong>{DEMO_MODE_LABEL} · solo lectura</strong><span>Los datos son ficticios. Este panel no inicia sesión real, no llama a la API y no guarda cambios.</span></div>
-    <div className="demo-role-switcher"><strong>Cambiar panel de presentación</strong><div className="demo-login-list">{DEMO_ROLES.map((availableRole) => <button type="button" className={'btn btn-sm ' + (availableRole === role ? 'btn-success' : 'btn-outline-success')} aria-pressed={availableRole === role} key={availableRole} onClick={() => onSelectRole(availableRole)}>{availableRole}</button>)}</div></div>
-    <section id="resumen" className="row g-3 stats-row">{dashboard.stats.map(([label, value]) => <div className="col-6 col-xl-3" key={label}><div className="stat-card"><small>{label}</small><strong>{value}</strong></div></div>)}</section>
-    <nav className="dashboard-nav" aria-label={'Navegación de demostración ' + role}>{dashboard.sections.map((section, index) => <a key={section.title} href={'#demo-seccion-' + index}>{section.title}</a>)}</nav>
-    {dashboard.sections.map((section, index) => <section className="dashboard-section demo-dashboard-section" id={'demo-seccion-' + index} key={section.title}><div className="section-title"><div><span className="eyebrow">{role}</span><h2>{section.title}</h2></div></div><div className="demo-dashboard-items">{section.items.map((item) => <div className="activity-card" key={item}><span>{item}</span><span className="status-pill">Ejemplo</span></div>)}</div></section>)}
-    <div className="dashboard-footer-note">🐾 <Link to="/mascotas">Explorar el catálogo de ejemplo</Link></div>
   </main>
 }
 

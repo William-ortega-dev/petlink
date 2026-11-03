@@ -49,9 +49,9 @@ export const DEMO_PETS = [
   },
 ]
 
-export function filterDemoPets(filters) {
+export function filterDemoPets(pets, filters) {
   const query = filters.q.trim().toLocaleLowerCase('es')
-  return DEMO_PETS.filter((pet) => {
+  return pets.filter((pet) => {
     const matchesName = !query || pet.nombre.toLocaleLowerCase('es').includes(query)
     const matchesSpecies = !filters.especie_id || String(pet.especie.id) === String(filters.especie_id)
     const matchesSex = !filters.sexo || pet.sexo === filters.sexo
