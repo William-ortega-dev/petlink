@@ -2,7 +2,7 @@
 
 ## Estado
 
-El repositorio está preparado para un frontend React estático en Vercel y una API Laravel en Docker/Render. La base PostgreSQL y las fotografías se proponen en Supabase. La rama pública `release/petlink-sanitized` ya está en GitHub. No se crearon recursos externos ni se publicó la aplicación porque hacen falta iniciar sesión en las cuentas de los proveedores y configurar sus valores privados.
+El repositorio contiene configuración para frontend React en Vercel, API Laravel en Render y PostgreSQL/fotografías en Supabase. El propietario informó que creó los servicios y observó un despliegue exitoso. Esta guía no tiene acceso a los paneles ni confirma el estado operativo, variables privadas, migraciones o datos actuales; verifica esos puntos directamente en las cuentas antes de presentar.
 
 La configuración no ejecuta migraciones ni seeders automáticamente por defecto. Tampoco crea cuentas de demostración en producción. El inicio de sesión de cinco roles en una demo pública requiere un plan de cuentas de presentación autorizado y no reutiliza las contraseñas locales conocidas.
 

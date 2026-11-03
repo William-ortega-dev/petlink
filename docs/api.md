@@ -8,9 +8,9 @@ Base local: http://127.0.0.1:8000/api. La API devuelve JSON. Rutas privadas usan
 | Catálogo público | GET /mascotas, GET /mascotas/{id}, GET /catalogos/especies, GET /catalogos/estados-mascota, GET /catalogos/razas, GET /refugios, GET /veterinarios |
 | Autenticación | POST /auth/registro, POST /auth/iniciar-sesion, POST /auth/cerrar-sesion, GET /auth/usuario, PUT /auth/perfil, PUT /auth/contrasena, POST /auth/recuperar-contrasena, POST /auth/restablecer-contrasena |
 | Notificaciones | GET /notificaciones, PATCH /notificaciones/{id}/leida, PATCH /notificaciones/leidas |
-| Mascotas | POST /mascotas, GET /mis-mascotas, PUT /mascotas/{id}, POST /mascotas/{id}/fotos, PATCH /mascotas/{id}/fotos/{foto}/principal, DELETE /mascotas/{id}/fotos/{foto} |
-| Publicaciones | POST /mascotas/{id}/publicaciones, PUT /publicaciones/{id} |
-| Adopción | POST /publicaciones/{id}/solicitudes, GET /mis-solicitudes, GET /solicitudes/para-revisar, PATCH /solicitudes/{id}, POST /solicitudes/{id}/formalizar, GET /adopciones |
+| Mascotas | POST /mascotas, GET /mis-mascotas, PUT/DELETE /mascotas/{id}, POST /mascotas/{id}/fotos, PATCH /mascotas/{id}/fotos/{foto}/principal, DELETE /mascotas/{id}/fotos/{foto} |
+| Publicaciones | POST /mascotas/{id}/publicaciones, PUT/DELETE /publicaciones/{id} |
+| Adopción | POST /publicaciones/{id}/solicitudes, GET /mis-solicitudes, DELETE /solicitudes/{id} (solo solicitud propia pendiente), GET /solicitudes/para-revisar, PATCH /solicitudes/{id}, POST /solicitudes/{id}/formalizar, GET /adopciones |
 | Administración y reportes | GET /panel, GET /usuarios, PATCH /usuarios/{id}, GET /roles, GET /auditoria (administrador), GET /reportes/resumen.csv (administrador/refugio), POST/PATCH /catalogos/especies, POST/PATCH /catalogos/razas, PATCH /catalogos/estados-mascota/{id}, POST /vacunas |
 | Veterinaria | GET/POST /citas, PATCH /citas/{id}, GET /mascotas/{id}/historial-medico, POST /historial-medico, GET /catalogos/vacunas, POST /vacunas, POST /vacunaciones, POST /veterinarios |
 | Hogares | GET/POST /hogar-temporal, GET /hogares-temporales, GET/POST /asignaciones-hogar, PATCH /asignaciones-hogar/{id}/finalizar |
@@ -36,5 +36,7 @@ Los roles se validan en controladores y políticas del backend; las opciones vis
 - Aplicar a una publicación crea una notificación para su responsable. Las revisiones y formalizaciones notifican al adoptante. La creación y actualización de citas notifican al veterinario o solicitante correspondiente.
 - Solicitudes, formalización y notificaciones se coordinan con transacciones; las peticiones concurrentes para una misma publicación no crean adopciones incompatibles.
 - `GET /reportes/resumen.csv` entrega conteos del estado actual de PostgreSQL, sin datos personales.
+- `DELETE /solicitudes/{id}` retira únicamente una solicitud pendiente de su adoptante y notifica a la persona responsable. Las solicitudes revisadas conservan su historial.
+- `DELETE /publicaciones/{id}` requiere que no existan solicitudes asociadas. `DELETE /mascotas/{id}` requiere retirar antes fotos/publicación y que no exista historial, cita, vacuna, acogida ni adopción. Ambos respetan el propietario y no eliminan dependencias en cascada.
 - Las operaciones autenticadas de escritura generan entradas en `audit_logs`. Se guardan el actor, método/ruta y, cuando existe, el tipo/ID del registro afectado.
 

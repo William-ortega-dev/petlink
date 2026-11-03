@@ -1,5 +1,7 @@
 # Modelo de datos inicial
 
+El diagrama ER con entidades, atributos y marcas de PK/FK está en [diagrama-er.md](diagrama-er.md). La documentación de tablas y restricciones de abajo refleja las migraciones del proyecto.
+
 ## Fuente y alcance
 
 El enlace del MER de Lucidchart del prompt no fue accesible desde el entorno. Este esquema es una propuesta basada en las entidades funcionales del prompt; no se afirma que replique el diagrama. Debe compararse con el MER original antes de producción.

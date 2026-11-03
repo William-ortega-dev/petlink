@@ -17,6 +17,8 @@ El enlace de Lucidchart del prompt no fue accesible. El esquema es una propuesta
 - backend/: API, migraciones, modelos, políticas y seeders Laravel.
 - frontend/: interfaz React en español.
 - docs/modelo-datos.md y docs/api.md: esquema y rutas propuestas.
+- docs/diagrama-er.md y docs/entrega-segundo-parcial.md: ER visual, arquitectura por capas y mapa de módulos/roles.
+- docs/supabase-inicializacion.sql: esquema reproducible y datos sintéticos de demostración; no contiene una copia de la base desplegada.
 - docker-compose.yml: PostgreSQL opcional para desarrollo local.
 
 Herramientas detectadas: PHP 8.2.12, Composer 2.8.12, Node 24.11.1, npm 11.6.2, Docker CLI 29.7.2 y servicio PostgreSQL 18. El cliente psql.exe existe, pero su carpeta no está en PATH; Docker Desktop/daemon no está activo.
@@ -125,7 +127,7 @@ npm run lint
 npm run build
 ~~~
 
-Verificación de esta actualización: la sintaxis PHP, `composer validate --strict --no-check-publish`, `npm run lint` y `npm run build` pasaron; Laravel registró 65 rutas API; las 3 pruebas unitarias pasaron. PHPUnit descubrió 22 pruebas de integración: una prueba de ejemplo pasó y 21 no pudieron conectar porque PostgreSQL rechazó la contraseña local del usuario `petlink` para `petlink_test`. No se verificaron migraciones, persistencia PostgreSQL ni flujos de API contra la base de datos. Configura credenciales válidas para esa base de pruebas antes de considerar esos checks completados.
+Verificación de esta actualización: las 3 pruebas unitarias pasaron; `npm run lint`, `npm run build`, `git diff --check`, sintaxis de los archivos PHP tocados y el registro de rutas pasaron (68 rutas API). PHPUnit enumera 28 pruebas: 25 de Feature y 3 unitarias. La prueba de ejemplo de Feature pasa; las 24 de `PetLinkApiTest` no alcanzaron la lógica porque el PostgreSQL local rechazó la contraseña del usuario `petlink` para `petlink_test`. La migración de pruebas no llegó a ejecutarse y esta sesión no comprobó persistencia o endpoints contra PostgreSQL. Configura credenciales válidas para la base separada de pruebas y vuelve a ejecutar `php artisan test` antes de dar por verificados esos flujos.
 
 ## Cuentas demo de desarrollo
 
@@ -139,6 +141,7 @@ Para que el selector de `Vite dev` rellene el formulario habitual, copia `fronte
 - Tokens Sanctum Bearer con expiración de 120 minutos, rutas privadas y políticas para mascotas y solicitudes.
 - Catálogo paginado, búsqueda y filtros, detalle, fotografías y publicaciones.
 - Solicitudes con transiciones revisadas y formalización transaccional; al formalizar se cierra la publicación, cambia el estado de la mascota y se resuelven solicitudes competidoras.
+- Borrado restringido de fichas sin historial, publicaciones sin solicitudes y solicitudes propias aún pendientes; las dependencias y el historial se preservan.
 - Paneles con datos de la API para administrador, adoptante, refugio, veterinario y hogar temporal.
 - Notificaciones internas persistentes para nuevas solicitudes, decisiones de adopción y cambios de citas; cada cuenta solo consulta y marca sus avisos.
 - Auditoría de operaciones autenticadas de escritura, consultable únicamente por administradores; no almacena contraseñas ni cuerpos de solicitudes.
@@ -159,7 +162,9 @@ Para que el selector de `Vite dev` rellene el formulario habitual, copia `fronte
 
 ## Despliegue de demostración
 
-Hay una configuración inicial para Laravel en Render (`backend/Dockerfile`, `backend/render.yaml`) y para el SPA en Vercel (`frontend/vercel.json`). El procedimiento manual, variables y límites actuales están en [docs/despliegue-gratuito.md](docs/despliegue-gratuito.md). No se han creado servicios, conectado cuentas ni publicado la aplicación.
+Hay configuración para Laravel en Render (`backend/Dockerfile`, `backend/render.yaml`) y para el SPA en Vercel (`frontend/vercel.json`). El propietario indicó que creó los servicios y observó un despliegue exitoso; el estado operativo actual y sus secretos no se verifican desde el repositorio. El procedimiento y las variables requeridas están en [docs/despliegue-gratuito.md](docs/despliegue-gratuito.md).
+
+Para el respaldo real del PostgreSQL de la cuenta, sigue [la guía de pgAdmin](docs/backup-postgres-pgadmin.md). No se incluyó un volcado de datos reales en este repositorio público.
 
 Render Free puede suspender el backend al estar inactivo y el filesystem local es efímero. La propuesta usa Supabase para PostgreSQL y almacenamiento de fotos; la base gratuita puede pausarse tras una semana con baja actividad. Vercel Hobby está destinado a proyectos personales/no comerciales. Estos planes sirven para una demostración y no ofrecen garantías de producción.
 
