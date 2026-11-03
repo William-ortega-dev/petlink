@@ -25,6 +25,27 @@ class AdoptionController extends Controller
         return response()->json($page);
     }
 
+    public function withdraw(Request $request, SolicitudAdopcion $solicitud)
+    {
+        $this->authorize('withdraw', $solicitud);
+
+        DB::transaction(function () use ($request, $solicitud) {
+            $lockedRequest = SolicitudAdopcion::whereKey($solicitud->id)->lockForUpdate()->firstOrFail();
+            $this->authorize('withdraw', $lockedRequest);
+            abort_unless($lockedRequest->estado === 'pendiente' && ! $lockedRequest->adopcion()->exists(), 409, 'Solo puedes retirar una solicitud que todavía está pendiente.');
+            $lockedRequest->load('publicacion.mascota.responsable');
+            $lockedRequest->publicacion?->mascota?->responsable?->notify(new PetLinkNotification(
+                'Solicitud de adopción retirada',
+                'Una persona retiró su solicitud para '.$lockedRequest->publicacion->mascota->nombre.'.',
+                '/panel#solicitudes-recibidas',
+                'solicitud.retirada',
+            ));
+            $lockedRequest->delete();
+        });
+
+        return response()->json(['message' => 'Solicitud pendiente retirada.']);
+    }
+
     public function apply(Request $request, PublicacionAdopcion $publicacion)
     {
         abort_unless($request->user()->isRole('Adoptante'), 403, 'Solo un perfil adoptante puede solicitar una adopción.');

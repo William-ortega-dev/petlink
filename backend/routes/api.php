@@ -53,15 +53,18 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\AuditCriticalActions::cl
     Route::post('/mascotas', [PetController::class, 'store']);
     Route::get('/mis-mascotas', [PetController::class, 'managed']);
     Route::put('/mascotas/{mascota}', [PetController::class, 'update']);
+    Route::delete('/mascotas/{mascota}', [PetController::class, 'destroy']);
     Route::post('/mascotas/{mascota}/fotos', [PetController::class, 'uploadPhoto']);
     Route::patch('/mascotas/{mascota}/fotos/{foto}/principal', [PetController::class, 'setPrimaryPhoto']);
     Route::delete('/mascotas/{mascota}/fotos/{foto}', [PetController::class, 'deletePhoto']);
     Route::get('/mascotas/{mascota}/historial-medico', [DomainController::class, 'medicalHistory']);
     Route::post('/mascotas/{mascota}/publicaciones', [PublicationController::class, 'store']);
     Route::put('/publicaciones/{publicacion}', [PublicationController::class, 'update']);
+    Route::delete('/publicaciones/{publicacion}', [PublicationController::class, 'destroy']);
 
     Route::get('/mis-solicitudes', [AdoptionController::class, 'mine']);
     Route::post('/publicaciones/{publicacion}/solicitudes', [AdoptionController::class, 'apply']);
+    Route::delete('/solicitudes/{solicitud}', [AdoptionController::class, 'withdraw']);
     Route::get('/solicitudes/para-revisar', [AdoptionController::class, 'forReview']);
     Route::patch('/solicitudes/{solicitud}', [AdoptionController::class, 'review']);
     Route::post('/solicitudes/{solicitud}/formalizar', [AdoptionController::class, 'formalize']);

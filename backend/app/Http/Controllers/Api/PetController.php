@@ -9,6 +9,7 @@ use App\Models\Refugio;
 use App\Models\Raza;
 use App\Models\FotoMascota;
 use App\Support\PetPhotoStorage;
+use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
@@ -19,7 +20,7 @@ class PetController extends Controller
     {
         $user = $request->user();
         abort_unless($user->isRole('Administrador', 'Refugio'), 403);
-        $query = Mascota::with(['especie:id,nombre,icono', 'raza:id,nombre', 'estado:id,codigo,nombre', 'fotos', 'publicacion:id,mascota_id,titulo,estado'])
+        $query = Mascota::with(['especie:id,nombre,icono', 'raza:id,nombre', 'estado:id,codigo,nombre', 'fotos', 'publicacion' => fn ($query) => $query->select(['id', 'mascota_id', 'titulo', 'estado'])->withCount('solicitudes')])
             ->orderByDesc('created_at');
         if (! $user->isAdministrator()) {
             $query->where('responsable_id', $user->id);
@@ -120,6 +121,37 @@ class PetController extends Controller
         $this->assertBreedMatchesSpecies($breedId, $speciesId);
         $mascota->update($data);
         return response()->json(['mascota' => $mascota->fresh()->load(['especie', 'raza', 'estado'])]);
+    }
+
+    public function destroy(Mascota $mascota)
+    {
+        $this->authorize('delete', $mascota);
+
+        try {
+            DB::transaction(function () use ($mascota) {
+                $lockedPet = Mascota::whereKey($mascota->id)->lockForUpdate()->firstOrFail();
+                $this->authorize('delete', $lockedPet);
+
+                $hasHistory = $lockedPet->fotos()->exists()
+                    || $lockedPet->publicacion()->exists()
+                    || $lockedPet->adopcion()->exists()
+                    || $lockedPet->citas()->exists()
+                    || $lockedPet->historialMedico()->exists()
+                    || $lockedPet->vacunasAplicadas()->exists()
+                    || $lockedPet->asignacionesHogar()->exists();
+
+                abort_if($hasHistory, 409, 'No se puede eliminar la ficha mientras tenga fotos o historial. Retira primero las fotos y elimina la publicación solo si no tiene solicitudes; las citas, atenciones, vacunas, acogidas y adopciones se conservan.');
+
+                $lockedPet->delete();
+            });
+        } catch (QueryException $exception) {
+            if ($exception->getCode() === '23503') {
+                abort(409, 'La mascota tiene registros relacionados y se debe conservar su historial.');
+            }
+            throw $exception;
+        }
+
+        return response()->json(['message' => 'Ficha de mascota eliminada.']);
     }
 
     public function uploadPhoto(Request $request, Mascota $mascota)

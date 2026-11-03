@@ -234,6 +234,67 @@ class PetLinkApiTest extends TestCase
         $this->actingAs($refuge, 'sanctum')->putJson('/api/mascotas/'.$pet->id, ['nombre' => 'Cambiada'])->assertForbidden();
     }
 
+    public function test_refuge_can_delete_only_its_own_unreferenced_pet(): void
+    {
+        $refuge = User::where('email', 'refugio@petlink.test')->firstOrFail();
+        $otherRefuge = $this->makeUser('Refugio', 'otro-refugio-delete@example.test');
+        $species = Especie::where('nombre', 'Perro')->firstOrFail();
+        $state = EstadoMascota::where('codigo', 'disponible')->firstOrFail();
+        $ownPet = Mascota::create(['nombre' => 'Ficha sin historial', 'especie_id' => $species->id, 'estado_id' => $state->id, 'responsable_id' => $refuge->id]);
+        $otherPet = Mascota::create(['nombre' => 'Ficha de otro refugio', 'especie_id' => $species->id, 'estado_id' => $state->id, 'responsable_id' => $otherRefuge->id]);
+
+        $this->actingAs($refuge, 'sanctum')->deleteJson('/api/mascotas/'.$otherPet->id)->assertForbidden();
+        $this->actingAs($refuge, 'sanctum')->deleteJson('/api/mascotas/'.$ownPet->id)->assertOk();
+        $this->assertDatabaseMissing('mascotas', ['id' => $ownPet->id]);
+        $this->assertDatabaseHas('mascotas', ['id' => $otherPet->id]);
+
+        $linkedPet = Mascota::create(['nombre' => 'Ficha con publicación', 'especie_id' => $species->id, 'estado_id' => $state->id, 'responsable_id' => $refuge->id]);
+        PublicacionAdopcion::create(['mascota_id' => $linkedPet->id, 'publicada_por' => $refuge->id, 'titulo' => 'Publicación que debe conservarse', 'estado' => 'publicada']);
+        $this->actingAs($refuge, 'sanctum')->deleteJson('/api/mascotas/'.$linkedPet->id)->assertStatus(409);
+        $this->assertDatabaseHas('mascotas', ['id' => $linkedPet->id]);
+    }
+
+    public function test_publication_can_be_deleted_only_before_requests_exist(): void
+    {
+        $refuge = User::where('email', 'refugio@petlink.test')->firstOrFail();
+        $adopter = User::where('email', 'adoptante@petlink.test')->firstOrFail();
+        $species = Especie::where('nombre', 'Perro')->firstOrFail();
+        $state = EstadoMascota::where('codigo', 'disponible')->firstOrFail();
+        $pet = Mascota::create(['nombre' => 'Ficha para publicación', 'especie_id' => $species->id, 'estado_id' => $state->id, 'responsable_id' => $refuge->id]);
+        $publication = PublicacionAdopcion::create(['mascota_id' => $pet->id, 'publicada_por' => $refuge->id, 'titulo' => 'Publicación sin solicitudes', 'estado' => 'publicada']);
+
+        $this->actingAs($refuge, 'sanctum')->deleteJson('/api/publicaciones/'.$publication->id)->assertOk();
+        $this->assertDatabaseMissing('publicaciones_adopcion', ['id' => $publication->id]);
+
+        $publicationWithRequest = PublicacionAdopcion::create(['mascota_id' => $pet->id, 'publicada_por' => $refuge->id, 'titulo' => 'Publicación con solicitud', 'estado' => 'publicada']);
+        $request = SolicitudAdopcion::create(['publicacion_id' => $publicationWithRequest->id, 'adoptante_id' => $adopter->id, 'estado' => 'pendiente']);
+        $this->actingAs($refuge, 'sanctum')->deleteJson('/api/publicaciones/'.$publicationWithRequest->id)->assertStatus(409);
+        $this->assertDatabaseHas('publicaciones_adopcion', ['id' => $publicationWithRequest->id]);
+        $this->assertDatabaseHas('solicitudes_adopcion', ['id' => $request->id]);
+    }
+
+    public function test_adopter_can_withdraw_only_own_pending_request(): void
+    {
+        $refuge = User::where('email', 'refugio@petlink.test')->firstOrFail();
+        $adopter = User::where('email', 'adoptante@petlink.test')->firstOrFail();
+        $otherAdopter = $this->makeUser('Adoptante', 'otro-adoptante-withdraw@example.test');
+        $species = Especie::where('nombre', 'Perro')->firstOrFail();
+        $state = EstadoMascota::where('codigo', 'disponible')->firstOrFail();
+        $pet = Mascota::create(['nombre' => 'Ficha con solicitudes', 'especie_id' => $species->id, 'estado_id' => $state->id, 'responsable_id' => $refuge->id]);
+        $publication = PublicacionAdopcion::create(['mascota_id' => $pet->id, 'publicada_por' => $refuge->id, 'titulo' => 'Publicación para solicitudes', 'estado' => 'publicada']);
+        $ownRequest = SolicitudAdopcion::create(['publicacion_id' => $publication->id, 'adoptante_id' => $adopter->id, 'estado' => 'pendiente']);
+        $otherRequest = SolicitudAdopcion::create(['publicacion_id' => $publication->id, 'adoptante_id' => $otherAdopter->id, 'estado' => 'pendiente']);
+
+        $this->actingAs($adopter, 'sanctum')->deleteJson('/api/solicitudes/'.$otherRequest->id)->assertForbidden();
+        $this->actingAs($adopter, 'sanctum')->deleteJson('/api/solicitudes/'.$ownRequest->id)->assertOk();
+        $this->assertDatabaseMissing('solicitudes_adopcion', ['id' => $ownRequest->id]);
+        $this->assertDatabaseHas('solicitudes_adopcion', ['id' => $otherRequest->id]);
+
+        $reviewedRequest = SolicitudAdopcion::create(['publicacion_id' => $publication->id, 'adoptante_id' => $adopter->id, 'estado' => 'en_revision']);
+        $this->actingAs($adopter, 'sanctum')->deleteJson('/api/solicitudes/'.$reviewedRequest->id)->assertStatus(409);
+        $this->assertDatabaseHas('solicitudes_adopcion', ['id' => $reviewedRequest->id]);
+    }
+
     public function test_veterinarian_cannot_read_or_write_medical_records_without_an_authorized_appointment(): void
     {
         $veterinarian = User::where('email', 'veterinario@petlink.test')->firstOrFail();

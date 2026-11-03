@@ -6,7 +6,9 @@ use App\Http\Controllers\Controller;
 use App\Models\EstadoMascota;
 use App\Models\Mascota;
 use App\Models\PublicacionAdopcion;
+use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 
 class PublicationController extends Controller
@@ -50,6 +52,32 @@ class PublicationController extends Controller
         }
         $publicacion->update($data);
         return response()->json(['publicacion' => $publicacion->fresh()->load('mascota:id,nombre')]);
+    }
+
+    public function destroy(PublicacionAdopcion $publicacion)
+    {
+        $publicacion->load('mascota');
+        $this->authorize('update', $publicacion->mascota);
+
+        try {
+            DB::transaction(function () use ($publicacion) {
+                $lockedPublication = PublicacionAdopcion::whereKey($publicacion->id)->lockForUpdate()->firstOrFail();
+                $pet = Mascota::whereKey($lockedPublication->mascota_id)->lockForUpdate()->firstOrFail();
+                $this->authorize('update', $pet);
+
+                abort_if($lockedPublication->solicitudes()->exists(), 409, 'La publicación tiene solicitudes asociadas; ciérrala para conservar su historial.');
+                abort_if($pet->adopcion()->exists(), 409, 'La publicación pertenece a una adopción formalizada y no se puede eliminar.');
+
+                $lockedPublication->delete();
+            });
+        } catch (QueryException $exception) {
+            if ($exception->getCode() === '23503') {
+                abort(409, 'La publicación tiene registros relacionados y se debe conservar su historial.');
+            }
+            throw $exception;
+        }
+
+        return response()->json(['message' => 'Publicación eliminada.']);
     }
 }
 
