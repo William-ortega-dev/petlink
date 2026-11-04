@@ -4,7 +4,7 @@ import api, { messageFromError } from './api'
 import { useAuth } from './AuthContext'
 import PetCard from './components/PetCard'
 import { DEMO_SPECIES, filterDemoPets } from './demoPets'
-import { DEMO_MODE_ENABLED, DEMO_ROLES, PUBLIC_DEMO_MODE } from './demoMode'
+import { DEMO_ACCOUNTS, DEMO_LOGIN_ENABLED, DEMO_MODE_ENABLED, DEMO_ROLES, PUBLIC_DEMO_MODE } from './demoMode'
 import { useDemoData } from './useDemoData'
 import DemoDashboard from './DemoDashboard'
 
@@ -30,7 +30,7 @@ function Header() {
               <Link className="nav-link" to="/panel" onClick={() => setOpen(false)}>Mi panel</Link>
               <span className="nav-user">Hola, {user.name.split(' ')[0]}</span>
               <button className="btn btn-sm btn-outline-success rounded-pill px-3" onClick={signOut}>Salir</button>
-            </> : PUBLIC_DEMO_MODE ? <>
+            </> : DEMO_LOGIN_ENABLED ? <>
               <Link className="btn btn-success rounded-pill px-4" to="/iniciar-sesion" onClick={() => setOpen(false)}>Demo por roles</Link>
             </> : <>
               <Link className="nav-link" to="/iniciar-sesion" onClick={() => setOpen(false)}>Iniciar sesión</Link>
@@ -63,12 +63,6 @@ function HomePage() {
   const [loading, setLoading] = useState(true)
   const [demoMode, setDemoMode] = useState(false)
   useEffect(() => {
-    if (PUBLIC_DEMO_MODE) {
-      setPets(demoState.pets.filter((pet) => pet.publicada && pet.estado?.codigo === 'disponible').slice(0, 3))
-      setDemoMode(true)
-      setLoading(false)
-      return
-    }
     api.get('/mascotas', { params: { per_page: 3 } })
       .then(({ data }) => {
         const availablePets = data.data || []
@@ -154,10 +148,6 @@ function CatalogPage() {
     setDemoMode(true)
   }, [demoState.pets])
   useEffect(() => {
-    if (PUBLIC_DEMO_MODE) {
-      setSpecies(demoState.species)
-      return
-    }
     api.get('/catalogos/especies')
       .then(({ data }) => {
         const availableSpecies = data.data || []
@@ -170,11 +160,6 @@ function CatalogPage() {
     let active = true
     setLoading(true)
     setError('')
-    if (PUBLIC_DEMO_MODE) {
-      showDemoResults(filters, page)
-      setLoading(false)
-      return () => { active = false }
-    }
     if (useLocalDemo) {
       showDemoResults(filters, page)
       setLoading(false)
@@ -242,11 +227,6 @@ function PetDetailPage() {
       setLoading(false)
       return
     }
-    if (PUBLIC_DEMO_MODE) {
-      setError('Esta ficha no está incluida en los datos de demostración.')
-      setLoading(false)
-      return
-    }
     api.get('/mascotas/' + id).then(({ data }) => setPet(data.mascota)).catch((err) => setError(messageFromError(err))).finally(() => setLoading(false))
   }, [id, demoAllowed, demoState.pets])
   async function apply() {
@@ -300,6 +280,7 @@ function AuthPage({ mode }) {
   const navigate = useNavigate()
   const [form, setForm] = useState({ name: '', email: '', telefono: '', password: '', password_confirmation: '' })
   const [error, setError] = useState('')
+  const [notice, setNotice] = useState('')
   const [busy, setBusy] = useState(false)
   if (user) return <Navigate to="/panel" replace />
   if (PUBLIC_DEMO_MODE && isRegister) return <Navigate to="/iniciar-sesion" replace />
@@ -307,15 +288,27 @@ function AuthPage({ mode }) {
   async function enterDemo(role) {
     setBusy(true)
     setError('')
+    setNotice('')
     try {
       await loginDemo(role)
       navigate('/panel')
     } catch (err) { setError(err.message || 'No fue posible abrir la vista demo.') } finally { setBusy(false) }
   }
+  function selectDemoAccount(role) {
+    if (DEMO_MODE_ENABLED) {
+      enterDemo(role)
+      return
+    }
+    const account = DEMO_ACCOUNTS[role]
+    if (!account) return
+    setForm((current) => ({ ...current, email: account.email, password: account.password }))
+    setNotice('Datos rellenados. Pulsa «Iniciar sesión» para autenticarte con el backend.')
+  }
   async function submit(event) {
     event.preventDefault()
     setBusy(true)
     setError('')
+    setNotice('')
     try {
       if (isRegister) await register(form)
       else await login({ email: form.email, password: form.password })
@@ -323,24 +316,21 @@ function AuthPage({ mode }) {
     } catch (err) { setError(messageFromError(err)) } finally { setBusy(false) }
   }
   return <main className="container auth-layout">
-    <div className="auth-aside"><span className="eyebrow">PetLink</span><h1>{PUBLIC_DEMO_MODE ? 'Presentación académica.' : isRegister ? 'Un nuevo comienzo empieza aquí.' : 'Qué bueno verte de nuevo.'}</h1><p>{PUBLIC_DEMO_MODE ? 'Explora el catálogo ficticio y los paneles de los cinco roles.' : isRegister ? 'Crea tu cuenta para iniciar un proceso de adopción responsable y seguir cada paso.' : 'Inicia sesión para consultar tus solicitudes y continuar tu historia.'}</p><div className="auth-paw">🐾</div></div>
-    <div className="auth-card"><h2>{PUBLIC_DEMO_MODE ? 'Elige un panel para presentar' : isRegister ? 'Crear cuenta' : 'Iniciar sesión'}</h2><p className="text-secondary mb-4">{PUBLIC_DEMO_MODE ? 'Cada panel muestra datos ficticios preparados para la exposición.' : isRegister ? 'Regístrate como adoptante para comenzar.' : 'Ingresa con tus datos de PetLink.'}</p>
-      {PUBLIC_DEMO_MODE ? <>
-        <div className="demo-login demo-login-public"><div className="demo-login-list">{DEMO_ROLES.map((role) => <button type="button" className="btn btn-outline-success" key={role} disabled={busy} onClick={() => enterDemo(role)}>Ver como {role}</button>)}</div><small>Es una demo interactiva con datos ficticios. Los cambios quedan en este navegador y nunca se envían a PostgreSQL.</small></div>
-        {error && <div className="alert alert-danger py-2 mt-3">{error}</div>}
-      </> : <>
+    <div className="auth-aside"><span className="eyebrow">PetLink</span><h1>{PUBLIC_DEMO_MODE ? 'Presentación académica.' : isRegister ? 'Un nuevo comienzo empieza aquí.' : 'Qué bueno verte de nuevo.'}</h1><p>{PUBLIC_DEMO_MODE ? 'Explora los cinco roles conectados a la API y PostgreSQL.' : isRegister ? 'Crea tu cuenta para iniciar un proceso de adopción responsable y seguir cada paso.' : 'Inicia sesión para consultar tus solicitudes y continuar tu historia.'}</p><div className="auth-paw">🐾</div></div>
+    <div className="auth-card"><h2>{isRegister ? 'Crear cuenta' : 'Iniciar sesión'}</h2><p className="text-secondary mb-4">{PUBLIC_DEMO_MODE ? 'Elige una cuenta de prueba; el inicio de sesión y las operaciones se procesan en el backend.' : isRegister ? 'Regístrate como adoptante para comenzar.' : 'Ingresa con tus datos de PetLink.'}</p>
         <form onSubmit={submit} className="vstack gap-3">
           {isRegister && <><Field label="Nombre completo" name="name" value={form.name} onChange={change} required autoComplete="name" /><Field label="Teléfono (opcional)" name="telefono" value={form.telefono} onChange={change} autoComplete="tel" /></>}
           <Field label="Correo electrónico" name="email" type="email" value={form.email} onChange={change} required autoComplete="email" />
           <Field label="Contraseña" name="password" type="password" value={form.password} onChange={change} required minLength={isRegister ? 10 : 1} autoComplete={isRegister ? 'new-password' : 'current-password'} />
           {isRegister && <Field label="Confirmar contraseña" name="password_confirmation" type="password" value={form.password_confirmation} onChange={change} required minLength={10} autoComplete="new-password" />}
-          {!isRegister && DEMO_MODE_ENABLED && <details className="demo-login" open><summary>Entrar a una vista de demostración</summary><div className="demo-login-list">{DEMO_ROLES.map((role) => <button type="button" className="btn btn-sm btn-outline-success" key={role} disabled={busy} onClick={() => enterDemo(role)}>{role}</button>)}</div><small>Datos inventados; las acciones se guardan solo en este navegador, sin iniciar sesión real.</small></details>}
+          {!isRegister && DEMO_LOGIN_ENABLED && <details className="demo-login" open><summary>Rellenar una cuenta de demostración</summary><div className="demo-login-list">{DEMO_ROLES.map((role) => <button type="button" className="btn btn-sm btn-outline-success" key={role} disabled={busy} onClick={() => selectDemoAccount(role)}>{role}</button>)}</div><small>{DEMO_MODE_ENABLED ? 'Vista local: permite recorrer los paneles sin backend.' : 'Rellena este formulario con una cuenta de prueba. El botón Iniciar sesión valida las credenciales con el backend y las acciones se guardan en PostgreSQL.'}</small></details>}
+          {notice && <div className="alert alert-success py-2" role="status">{notice}</div>}
           {error && <div className="alert alert-danger py-2">{error}</div>}
           <button className="btn btn-success btn-lg rounded-pill w-100 mt-2" disabled={busy}>{busy ? 'Un momento…' : isRegister ? 'Crear mi cuenta' : 'Iniciar sesión'}</button>
         </form>
-        <p className="auth-switch">{isRegister ? '¿Ya tienes cuenta?' : '¿Primera vez en PetLink?'} <Link to={isRegister ? '/iniciar-sesion' : '/registro'}>{isRegister ? 'Inicia sesión' : 'Regístrate'}</Link></p>
-        {!isRegister && <p className="auth-switch mt-2"><Link to="/recuperar-contrasena">¿Olvidaste tu contraseña?</Link></p>}
-      </>}
+        {!PUBLIC_DEMO_MODE && <><p className="auth-switch">{isRegister ? '¿Ya tienes cuenta?' : '¿Primera vez en PetLink?'} <Link to={isRegister ? '/iniciar-sesion' : '/registro'}>{isRegister ? 'Inicia sesión' : 'Regístrate'}</Link></p>
+          {!isRegister && <p className="auth-switch mt-2"><Link to="/recuperar-contrasena">¿Olvidaste tu contraseña?</Link></p>}</>}
+
     </div>
   </main>
 }

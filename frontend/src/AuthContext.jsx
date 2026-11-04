@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useMemo, useState } from 'react'
 import api from './api'
-import { DEMO_MODE_ENABLED, PUBLIC_DEMO_MODE } from './demoMode'
+import { DEMO_MODE_ENABLED } from './demoMode'
 
 const AuthContext = createContext(null)
 
@@ -18,14 +18,9 @@ export function AuthProvider({ children }) {
     const role = localStorage.getItem('petlink_demo_role')
     return DEMO_USERS[role] || null
   })
-  const [loading, setLoading] = useState(() => !PUBLIC_DEMO_MODE && Boolean(localStorage.getItem('petlink_token') && !(DEMO_MODE_ENABLED && localStorage.getItem('petlink_demo_role'))))
+  const [loading, setLoading] = useState(() => Boolean(localStorage.getItem('petlink_token') && !(DEMO_MODE_ENABLED && localStorage.getItem('petlink_demo_role'))))
 
   useEffect(() => {
-    if (PUBLIC_DEMO_MODE) {
-      localStorage.removeItem('petlink_token')
-      setLoading(false)
-      return
-    }
     if (!DEMO_MODE_ENABLED) localStorage.removeItem('petlink_demo_role')
     const demoRole = DEMO_MODE_ENABLED ? localStorage.getItem('petlink_demo_role') : null
     if (demoRole && DEMO_USERS[demoRole]) {
@@ -54,7 +49,6 @@ export function AuthProvider({ children }) {
     user,
     loading,
     login: async (credentials) => {
-      if (PUBLIC_DEMO_MODE) throw new Error('El inicio de sesión real está desactivado en esta demo académica.')
       const { data } = await api.post('/auth/iniciar-sesion', credentials)
       saveSession(data)
       return data.user
@@ -68,7 +62,6 @@ export function AuthProvider({ children }) {
       return demoUser
     },
     register: async (fields) => {
-      if (PUBLIC_DEMO_MODE) throw new Error('El registro real está desactivado en esta demo académica.')
       const { data } = await api.post('/auth/registro', fields)
       saveSession(data)
       return data.user
