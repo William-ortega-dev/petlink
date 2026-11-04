@@ -49,8 +49,8 @@ En Render y Vercel conecta el repositorio público `William-ortega-dev/petlink` 
 5. Para Supabase Storage define `SUPABASE_URL=https://<project-ref>.supabase.co`, `SUPABASE_STORAGE_BUCKET=petlink-assets` y `PET_PHOTO_DISK=supabase`. `SUPABASE_STORAGE_KEY` es la clave secret del proyecto o el legacy service_role. El backend usa la API del bucket para subir y borrar fotos; el navegador usa URLs públicas. Nunca mandes la clave al frontend.
 6. Configura `APP_URL` con la URL HTTPS de Render. `FRONTEND_URL` debe ser el origen HTTPS exacto que Vercel asigna, sin ruta final.
 7. Deja `PETLINK_DEMO_ACCOUNTS=false`. No configures las contraseñas demo locales en esta aplicación pública.
-8. Confirma la base destino antes de migrar. El guard espera `PETLINK_MIGRATION_TARGET` con el texto exacto `<DB_DATABASE>@<DB_HOST>:<DB_PORT>`. Si los datos son correctos, configura temporalmente `RUN_MIGRATIONS=true` y vuelve a desplegar; el contenedor muestra el destino y ejecuta `php artisan migrate --force`. Después cambia `RUN_MIGRATIONS=false`.
-9. Cuando las tablas ya existan, configura temporalmente `RUN_SEEDERS=true` junto con la confirmación anterior y despliega para insertar roles y catálogos. En `APP_ENV=production` el seeder no crea cuentas demo ni mascotas de prueba. Luego deja ambos interruptores en `false`.
+8. Para la demo académica, abre **Supabase > SQL Editor**, pega y ejecuta [`supabase-inicializacion.sql`](supabase-inicializacion.sql) en la instancia dedicada de PetLink. Crea el esquema PostgreSQL y datos de demostración persistentes. El script no borra información y se detiene si encuentra usuarios o mascotas ajenos a la muestra. Como crea un administrador público de prueba, no lo uses en una base con datos reales.
+9. El script ya registra las migraciones, roles, catálogos y cuentas ficticias. Deja `RUN_MIGRATIONS=false`, `RUN_SEEDERS=false` y `PETLINK_DEMO_ACCOUNTS=false` en Render. Verifica `https://<servicio>.onrender.com/api/health` y el catálogo antes de continuar.
 10. Verifica `https://<servicio>.onrender.com/api/health`. El resultado esperado es HTTP 200 con `database: connected`.
 
 El Session pooler debe permitir migraciones de Laravel. Si un proveedor limita conexiones de sesión, no cambies a transacciones en modo pooler sin verificar las restricciones de estado de sesión de PostgreSQL.
@@ -61,14 +61,14 @@ El Session pooler debe permitir migraciones de Laravel. Si un proveedor limita c
 2. Vercel usa `frontend/vercel.json`, `npm run build` y `dist`.
 3. Configura `VITE_API_URL=https://<servicio>.onrender.com/api` como variable de entorno de producción y despliega.
 4. Copia el origen HTTPS asignado a Vercel y úsalo en Render como `FRONTEND_URL`. Verifica que CORS no permita otros orígenes.
-5. Para una presentación académica solo visual, define `VITE_DEMO_MODE=true` en producción y despliega. El catálogo y los cinco paneles usan ejemplos ficticios en el navegador; el inicio de sesión real, el registro y las escrituras quedan desactivados en ese modo. Define `VITE_DEMO_MODE=false` para volver al comportamiento conectado a PostgreSQL.
+5. Para la demo persistente define `VITE_DEMO_MODE=true` en producción junto con `VITE_API_URL=https://<servicio>.onrender.com/api` y despliega. Esta variable solo habilita los botones que rellenan las credenciales; el formulario autentica contra Laravel y las operaciones usan PostgreSQL. Los paneles no se simulan en el navegador.
 6. Vuelve a probar `/api/health`, lectura del catálogo y recarga directa de `/mascotas` y `/panel`.
 
 ### 5. Correo y acceso de presentación
 
 Laravel ya tiene rutas de recuperación de contraseña. El `MAIL_MAILER=log` de la configuración de Render solo registra el enlace en los logs; no lo envía por correo. Si se requiere recuperación pública, configura un SMTP/transporte real en el panel del backend y verifica la entrega antes de anunciar esa función.
 
-No hay cuentas demo con permisos de backend sembradas en producción. `VITE_DEMO_MODE=true` habilita un recorrido visual público y de solo lectura para mostrar los cinco paneles; sus mascotas, estadísticas y actividades son ejemplos del frontend, no registros de PostgreSQL. Las solicitudes demo no se guardan. Para probar permisos y operaciones reales se necesitan cuentas controladas en un entorno separado. No habilites `PETLINK_DEMO_ACCOUNTS` en producción.
+Las cuentas del script SQL tienen permisos reales y sus credenciales son públicas. Úsalas únicamente con el dataset ficticio de la base de estudio. No habilites el seeder de Laravel (`PETLINK_DEMO_ACCOUNTS`) en producción; el script SQL es el mecanismo separado para la presentación. Las fotos requieren además un bucket público de Supabase Storage para las imágenes que se suban desde la aplicación.
 
 ## Verificación posterior
 

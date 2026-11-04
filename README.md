@@ -127,13 +127,13 @@ npm run lint
 npm run build
 ~~~
 
-Verificación de esta actualización: las 3 pruebas unitarias pasaron; `npm run lint`, `npm run build`, `git diff --check`, sintaxis de los archivos PHP tocados y el registro de rutas pasaron (68 rutas API). PHPUnit enumera 28 pruebas: 25 de Feature y 3 unitarias. La prueba de ejemplo de Feature pasa; las 24 de `PetLinkApiTest` no alcanzaron la lógica porque el PostgreSQL local rechazó la contraseña del usuario `petlink` para `petlink_test`. La migración de pruebas no llegó a ejecutarse y esta sesión no comprobó persistencia o endpoints contra PostgreSQL. Configura credenciales válidas para la base separada de pruebas y vuelve a ejecutar `php artisan test` antes de dar por verificados esos flujos.
+Verificación actual: `npm run lint` y `npm run build` pasan; también compilé con `VITE_DEMO_MODE=true` para revisar el selector público. `php artisan test` ejecuta 28 pruebas: 4 pasan y 24 no llegan a sus aserciones porque este PHP no tiene el controlador `pdo_pgsql` (`could not find driver`) para `petlink_test`. La base desplegada responde `/api/health` con PostgreSQL conectado, pero el catálogo aún devuelve cero mascotas. No pude ejecutar el SQL de inicialización contra la instancia Supabase desde este entorno; hazlo una vez desde Supabase SQL Editor y luego repite la verificación de catálogo/login.
 
-## Cuentas demo de desarrollo
+## Cuentas demo locales y de presentación
 
 En `APP_ENV=local` o `APP_ENV=testing`, `php artisan migrate --seed` crea cuentas y datos de demostración relacionados cuando las cinco contraseñas están configuradas. `backend/.env.example` trae las credenciales locales de referencia. El seeder usa `firstOrCreate`: no duplica ni cambia usuarios que ya existan. En otro entorno controlado se necesita además `PETLINK_DEMO_ACCOUNTS=true`; producción siempre los omite. Las contraseñas se guardan con el cast `hashed` del modelo y nunca se devuelven por la API.
 
-| Rol | Correo | Contraseña local |
+| Rol | Correo | Contraseña de prueba |
 |---|---|---|
 | Administrador | `admin@petlink.test` | `AdminPetLink2026!` |
 | Adoptante | `adoptante@petlink.test` | `AdoptantePetLink2026!` |
@@ -141,9 +141,11 @@ En `APP_ENV=local` o `APP_ENV=testing`, `php artisan migrate --seed` crea cuenta
 | Veterinario | `veterinario@petlink.test` | `Veterinario2026!` |
 | Hogar temporal | `hogar@petlink.test` | `HogarTemporal2026!` |
 
-En Vite dev, los botones de roles abren paneles de demostración con datos ficticios. Para publicar la demo académica, configura `VITE_DEMO_MODE=true` en Vercel y despliega. La demo ofrece un recorrido interactivo por los cinco roles: el refugio registra y publica mascotas, revisa solicitudes y asigna hogares; el adoptante explora fichas, solicita adopciones y citas, consulta seguimientos y registra aportes; el veterinario confirma citas y registra atenciones y vacunas; el hogar temporal informa novedades y finaliza acogidas; el administrador supervisa el conjunto y agrega especies. Hay datos iniciales para mostrar solicitudes, adopciones, seguimientos, citas, historial médico, vacunas, acogidas, notificaciones, donaciones y auditoría.
+Para presentar una demo persistente, usa una instancia Supabase dedicada a estudio y ejecuta una vez [`docs/supabase-inicializacion.sql`](docs/supabase-inicializacion.sql) en su SQL Editor. El script crea el esquema y datos ficticios enlazados para mascotas, publicaciones, solicitudes, adopciones, citas, historial médico, vacunas, donaciones y hogares. Es idempotente, no actualiza ni elimina usuarios existentes y aborta si encuentra usuarios o mascotas fuera del dataset de demostración. **No lo ejecutes en una base con información real:** incluye credenciales públicas de prueba con permisos de administrador.
 
-Los botones de rol en `/iniciar-sesion` abren la demo sin contraseña. Las acciones se guardan únicamente en el almacenamiento local del navegador (`localStorage`): no hay autenticación real ni escrituras a la API o PostgreSQL. El botón **Restablecer datos de demo** en el panel permite volver a la muestra inicial. Para desarrollarla localmente, usa `VITE_DEMO_MODE=true` en `frontend/.env`; para el modo conectado, configura `VITE_DEMO_MODE=false` y despliega de nuevo. Las cuentas de demo con permisos reales siguen limitadas a entornos locales o de prueba controlados. `frontend/.env.example` configura la URL local de la API; no coloques contraseñas en variables `VITE_`, porque el frontend se entrega al navegador.
+En Vercel configura `VITE_API_URL=https://<tu-api>.onrender.com/api` y `VITE_DEMO_MODE=true`. En `/iniciar-sesion`, cada botón de rol rellena el formulario normal; el usuario debe pulsar **Iniciar sesión** y el backend valida la contraseña, emite el token y aplica permisos. Las operaciones se guardan en PostgreSQL. No hay bypass de autenticación en producción. El dataset es ficticio y público, por lo que no se deben registrar datos personales o reales en esa instancia.
+
+Estas contraseñas son públicas y solo sirven para la base aislada de presentación; no las reutilices. PostgreSQL recibe hashes bcrypt. Para simular el modo sin API local, `VITE_DEMO_MODE=true` en Vite habilita los paneles de navegador solo cuando la compilación es de desarrollo. En local conectado a API, déjalo en `false`. `frontend/.env.example` configura la URL local; nunca incluyas contraseñas personales, tokens ni archivos `.env` en Git.
 
 ## Funcionalidades implementadas
 

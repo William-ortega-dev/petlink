@@ -1,4 +1,4 @@
--- PetLink: esquema PostgreSQL y datos de demostración para Supabase.
+-- PetLink: esquema PostgreSQL y datos ficticios para la instancia académica.
 -- Derivado de backend/database/migrations y DatabaseSeeder.php.
 --
 -- Uso: pegar el archivo completo en Supabase > SQL Editor y ejecutar.
@@ -6,8 +6,10 @@
 -- Se puede ejecutar de nuevo: los catálogos y datos demo son idempotentes.
 -- Si detecta un esquema incompleto, aborta para proteger datos existentes.
 --
--- Las cuentas demo de este archivo usan correos .invalid, quedan desactivadas
--- y tienen hashes sin contraseña conocida. No son cuentas para iniciar sesión.
+-- Incluye cinco cuentas públicas de demostración con contraseñas bcrypt.
+-- Ejecutar únicamente en una base separada para estudio/demo, nunca con datos
+-- reales. El guard inferior aborta si encuentra usuarios o mascotas ajenos a
+-- las cuentas y fichas de muestra de PetLink.
 
 BEGIN;
 SET LOCAL search_path = public;
@@ -453,6 +455,56 @@ CREATE TABLE IF NOT EXISTS migrations (
     batch integer NOT NULL
 );
 
+-- Barrera: la base de la presentación debe contener solo registros ficticios.
+-- No actualiza ni elimina datos; se detiene si encuentra otras cuentas o fichas.
+DO $petlink_demo_data_guard$
+BEGIN
+    IF EXISTS (
+        SELECT 1 FROM users
+         WHERE lower(email) NOT IN (
+             'admin@petlink.test', 'adoptante@petlink.test', 'refugio@petlink.test',
+             'veterinario@petlink.test', 'hogar@petlink.test'
+         )
+           AND lower(email) NOT LIKE 'demo-%@petlink.invalid'
+    ) THEN
+        RAISE EXCEPTION 'La base ya contiene usuarios fuera del conjunto demo PetLink. No se insertaron credenciales públicas; usa una base separada de estudio.';
+    END IF;
+
+    IF EXISTS (
+        SELECT 1 FROM mascotas pet
+         WHERE NOT EXISTS (
+             SELECT 1 FROM users owner
+              WHERE owner.id = pet.responsable_id
+                AND (lower(owner.email) IN (
+                    'admin@petlink.test', 'adoptante@petlink.test', 'refugio@petlink.test',
+                    'veterinario@petlink.test', 'hogar@petlink.test'
+                ) OR lower(owner.email) LIKE 'demo-%@petlink.invalid')
+         )
+    ) THEN
+        RAISE EXCEPTION 'La base contiene mascotas fuera del conjunto demo PetLink. No se realizaron cambios.';
+    END IF;
+
+    IF EXISTS (
+        SELECT 1
+          FROM users user_demo
+          JOIN roles role_demo ON role_demo.id = user_demo.role_id
+         WHERE lower(user_demo.email) IN (
+             'admin@petlink.test', 'adoptante@petlink.test', 'refugio@petlink.test',
+             'veterinario@petlink.test', 'hogar@petlink.test'
+         )
+           AND (role_demo.nombre <> CASE lower(user_demo.email)
+                 WHEN 'admin@petlink.test' THEN 'Administrador'
+                 WHEN 'adoptante@petlink.test' THEN 'Adoptante'
+                 WHEN 'refugio@petlink.test' THEN 'Refugio'
+                 WHEN 'veterinario@petlink.test' THEN 'Veterinario'
+                 WHEN 'hogar@petlink.test' THEN 'Hogar temporal'
+               END OR user_demo.activo IS NOT TRUE)
+    ) THEN
+        RAISE EXCEPTION 'Una cuenta demo existe con rol distinto o inactiva. Se detuvo para no sobrescribir usuarios.';
+    END IF;
+END
+$petlink_demo_data_guard$;
+
 -- Registra los mismos nombres que Laravel para que artisan migrate no intente
 -- recrear las tablas ya inicializadas desde este archivo.
 INSERT INTO migrations (migration, batch)
@@ -515,8 +567,8 @@ VALUES
     ('Moquillo', true, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 ON CONFLICT (nombre) DO NOTHING;
 
--- Datos relacionales de ejemplo. Las cuentas sintéticas quedan inactivas y no
--- permiten iniciar sesión; sirven solo para mantener las relaciones de muestra.
+-- Dataset ficticio persistente. Las cinco cuentas activas usan correos .test;
+-- las contraseñas correspondientes se documentan en README para uso académico.
 INSERT INTO direcciones (
     departamento, municipio, direccion_linea, barrio, created_at, updated_at
 )
@@ -531,14 +583,14 @@ SELECT 'Cundinamarca', 'Bogotá', 'Calle 10 # 5-20', 'Centro', CURRENT_TIMESTAMP
 INSERT INTO users (
     role_id, name, email, telefono, direccion_id, activo, password, created_at, updated_at
 )
-SELECT roles.id, seed.name, seed.email, '3000000000', address.id, false,
+SELECT roles.id, seed.name, seed.email, '3000000000', address.id, true,
        seed.password_hash, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
   FROM (VALUES
-      ('Administrador', 'PetLink Admin Demo', 'demo-admin@petlink.invalid', '$2y$10$LnElBADgzCzj82Vzxq6hyudPAtxkOsoldzyfsNV6CAEUY0efVHwEe'),
-      ('Adoptante', 'PetLink Adoptante Demo', 'demo-adoptante@petlink.invalid', '$2y$10$pzdcICd7Q/XXcMjkZ30KXuktxpPUG6JMpXNQ8iP6apkoiozKm9PM.'),
-      ('Refugio', 'PetLink Refugio Demo', 'demo-refugio@petlink.invalid', '$2y$10$lLJbuB6yaq64wqc9Xg7z3uH2IsczfRmwjyt7Qe1ZDp4FW68mQZLze'),
-      ('Veterinario', 'PetLink Veterinario Demo', 'demo-veterinario@petlink.invalid', '$2y$10$9Sb/M3i5t0467nDWA6.NbegRlzyHM2OfO7hhf0VdWuifa8HZ.epk.'),
-      ('Hogar temporal', 'PetLink Hogar Demo', 'demo-hogar@petlink.invalid', '$2y$10$/jeUv78wpu3S6IXHWmNutOFr1FuR4UI/.kX8iEh3Q6On3zg74Ifem')
+      ('Administrador', 'PetLink Admin Demo', 'admin@petlink.test', '$2y$10$eodZEjEO2jyqUrpCl8Bkk.xSijODsrJ7wcLHYmYk8oYths4/e/iDG'),
+      ('Adoptante', 'PetLink Adoptante Demo', 'adoptante@petlink.test', '$2y$10$ieW6zEhD/JbBm1cQfvmlved.SL0GwXLCTRQspY4bu..l/ppG1syLm'),
+      ('Refugio', 'PetLink Refugio Demo', 'refugio@petlink.test', '$2y$10$3.73.0bDyU6hzeKZeWr0.uWepSUZqmuSFViqR9XoUPUkhMIU.Mkz6'),
+      ('Veterinario', 'PetLink Veterinario Demo', 'veterinario@petlink.test', '$2y$10$R/FcSDImGGEUrutnzhQaIeBFz3wOaJxxE/6Ro79U/O/JTS0/3hZVC'),
+      ('Hogar temporal', 'PetLink Hogar Demo', 'hogar@petlink.test', '$2y$10$4wnRenPPiwYGDlywCeSgRO9mrUwL68OlDsgpfW3sqxhlMk3pSMarq')
   ) AS seed(role_name, name, email, password_hash)
   JOIN roles ON roles.nombre = seed.role_name
   JOIN direcciones address
@@ -558,7 +610,7 @@ SELECT 'Refugio PetLink Demo', shelter_user.email, shelter_user.telefono, shelte
     ON address.departamento = 'Cundinamarca'
    AND address.municipio = 'Bogotá'
    AND address.direccion_linea = 'Calle 10 # 5-20'
- WHERE shelter_user.email = 'demo-refugio@petlink.invalid'
+ WHERE shelter_user.email = 'refugio@petlink.test'
    AND NOT EXISTS (
        SELECT 1 FROM refugios existing
         WHERE existing.responsable_id = shelter_user.id
@@ -571,7 +623,7 @@ INSERT INTO veterinarios (
 SELECT user_demo.id, 'DEMO-MV-SQL-001', 'Medicina preventiva', 'Clínica PetLink Demo',
        true, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
   FROM users user_demo
- WHERE user_demo.email = 'demo-veterinario@petlink.invalid'
+ WHERE user_demo.email = 'veterinario@petlink.test'
 ON CONFLICT DO NOTHING;
 
 INSERT INTO hogares_temporales (
@@ -584,7 +636,7 @@ SELECT user_demo.id, address.id, 2, true, true, true, CURRENT_TIMESTAMP, CURRENT
     ON address.departamento = 'Cundinamarca'
    AND address.municipio = 'Bogotá'
    AND address.direccion_linea = 'Calle 10 # 5-20'
- WHERE user_demo.email = 'demo-hogar@petlink.invalid'
+ WHERE user_demo.email = 'hogar@petlink.test'
 ON CONFLICT (responsable_id) DO NOTHING;
 
 INSERT INTO mascotas (
@@ -596,16 +648,16 @@ SELECT seed.nombre, especie.id, raza.id, estado.id, shelter_user.id, shelter.id,
        seed.edad, seed.sexo, seed.tamano, seed.descripcion, seed.codigo,
        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
   FROM (VALUES
-      ('Luna', 'Gato', 'Criollo', 'disponible', 2, 'hembra', 'pequeno', 'Cariñosa, tranquila y lista para encontrar un hogar.', 'DEMO-PL-SQL-001'),
-      ('Max', 'Perro', 'Criollo', 'disponible', 3, 'macho', 'mediano', 'Sociable y juguetón; disfruta los paseos y la compañía.', 'DEMO-PL-SQL-002'),
-      ('Mora', 'Perro', 'Beagle', 'disponible', 1, 'hembra', 'mediano', 'Curiosa, activa y con mucha energía para compartir.', 'DEMO-PL-SQL-003'),
-      ('Bongo', 'Perro', 'Criollo', 'adoptada', 4, 'macho', 'mediano', 'Adopción de demostración PetLink.', 'DEMO-PL-SQL-004'),
-      ('Nube', 'Gato', 'Criollo', 'en_acogida', 1, 'hembra', 'pequeno', 'En hogar temporal de demostración.', 'DEMO-PL-SQL-005')
+      ('Luna', 'Gato', 'Criollo', 'disponible', 2, 'hembra', 'pequeno', 'Cariñosa, tranquila y lista para encontrar un hogar.', 'DEMO-PL-PUBLIC-001'),
+      ('Max', 'Perro', 'Criollo', 'disponible', 3, 'macho', 'mediano', 'Sociable y juguetón; disfruta los paseos y la compañía.', 'DEMO-PL-PUBLIC-002'),
+      ('Mora', 'Perro', 'Beagle', 'disponible', 1, 'hembra', 'mediano', 'Curiosa, activa y con mucha energía para compartir.', 'DEMO-PL-PUBLIC-003'),
+      ('Bongo', 'Perro', 'Criollo', 'adoptada', 4, 'macho', 'mediano', 'Adopción de demostración PetLink.', 'DEMO-PL-PUBLIC-004'),
+      ('Nube', 'Gato', 'Criollo', 'en_acogida', 1, 'hembra', 'pequeno', 'En hogar temporal de demostración.', 'DEMO-PL-PUBLIC-005')
   ) AS seed(nombre, especie, raza, estado, edad, sexo, tamano, descripcion, codigo)
   JOIN especies especie ON especie.nombre = seed.especie
   JOIN razas raza ON raza.especie_id = especie.id AND raza.nombre = seed.raza
   JOIN estados_mascota estado ON estado.codigo = seed.estado
-  JOIN users shelter_user ON shelter_user.email = 'demo-refugio@petlink.invalid'
+  JOIN users shelter_user ON shelter_user.email = 'refugio@petlink.test'
   JOIN refugios shelter ON shelter.responsable_id = shelter_user.id
 ON CONFLICT (codigo_identificacion) DO NOTHING;
 
@@ -614,14 +666,14 @@ INSERT INTO publicaciones_adopcion (
     cerrada_en, created_at, updated_at
 )
 SELECT pet.id, shelter_user.id, 'Conoce a ' || pet.nombre, pet.descripcion,
-       CASE WHEN pet.codigo_identificacion = 'DEMO-PL-SQL-004' THEN 'cerrada' ELSE 'publicada' END,
+       CASE WHEN pet.codigo_identificacion = 'DEMO-PL-PUBLIC-004' THEN 'cerrada' ELSE 'publicada' END,
        CURRENT_TIMESTAMP,
-       CASE WHEN pet.codigo_identificacion = 'DEMO-PL-SQL-004' THEN CURRENT_TIMESTAMP ELSE NULL END,
+       CASE WHEN pet.codigo_identificacion = 'DEMO-PL-PUBLIC-004' THEN CURRENT_TIMESTAMP ELSE NULL END,
        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
   FROM mascotas pet
-  JOIN users shelter_user ON shelter_user.email = 'demo-refugio@petlink.invalid'
+  JOIN users shelter_user ON shelter_user.email = 'refugio@petlink.test'
  WHERE pet.codigo_identificacion IN (
-       'DEMO-PL-SQL-001', 'DEMO-PL-SQL-002', 'DEMO-PL-SQL-003', 'DEMO-PL-SQL-004'
+       'DEMO-PL-PUBLIC-001', 'DEMO-PL-PUBLIC-002', 'DEMO-PL-PUBLIC-003', 'DEMO-PL-PUBLIC-004'
   )
 ON CONFLICT (mascota_id) DO NOTHING;
 
@@ -634,29 +686,29 @@ SELECT publication.id, adopter.id, 'Solicitud ficticia para demostración PetLin
        CASE WHEN seed.estado = 'pendiente' THEN NULL ELSE CURRENT_TIMESTAMP END,
        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
   FROM (VALUES
-      ('DEMO-PL-SQL-001', 'pendiente'),
-      ('DEMO-PL-SQL-002', 'en_revision'),
-      ('DEMO-PL-SQL-003', 'aprobada'),
-      ('DEMO-PL-SQL-004', 'formalizada')
+      ('DEMO-PL-PUBLIC-001', 'pendiente'),
+      ('DEMO-PL-PUBLIC-002', 'en_revision'),
+      ('DEMO-PL-PUBLIC-003', 'aprobada'),
+      ('DEMO-PL-PUBLIC-004', 'formalizada')
   ) AS seed(codigo_mascota, estado)
   JOIN mascotas pet ON pet.codigo_identificacion = seed.codigo_mascota
   JOIN publicaciones_adopcion publication ON publication.mascota_id = pet.id
-  JOIN users adopter ON adopter.email = 'demo-adoptante@petlink.invalid'
-  JOIN users shelter_user ON shelter_user.email = 'demo-refugio@petlink.invalid'
+  JOIN users adopter ON adopter.email = 'adoptante@petlink.test'
+  JOIN users shelter_user ON shelter_user.email = 'refugio@petlink.test'
 ON CONFLICT (publicacion_id, adoptante_id) DO NOTHING;
 
 INSERT INTO adopciones (
     solicitud_id, mascota_id, adoptante_id, formalizada_por, fecha_adopcion,
     estado, observaciones, created_at, updated_at
 )
-SELECT request.id, pet.id, adopter.id, shelter_user.id, DATE '2026-11-02',
+SELECT request.id, pet.id, adopter.id, shelter_user.id, CURRENT_DATE,
        'activa', 'Adopción ficticia de demostración.', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
   FROM solicitudes_adopcion request
   JOIN publicaciones_adopcion publication ON publication.id = request.publicacion_id
   JOIN mascotas pet ON pet.id = publication.mascota_id
   JOIN users adopter ON adopter.id = request.adoptante_id
-  JOIN users shelter_user ON shelter_user.email = 'demo-refugio@petlink.invalid'
- WHERE pet.codigo_identificacion = 'DEMO-PL-SQL-004'
+  JOIN users shelter_user ON shelter_user.email = 'refugio@petlink.test'
+ WHERE pet.codigo_identificacion = 'DEMO-PL-PUBLIC-004'
    AND request.estado = 'formalizada'
 ON CONFLICT DO NOTHING;
 
@@ -664,52 +716,52 @@ INSERT INTO seguimientos_adopcion (
     adopcion_id, registrado_por, fecha_programada, resultado, observaciones,
     created_at, updated_at
 )
-SELECT adoption.id, shelter_user.id, DATE '2026-11-09', 'pendiente',
+SELECT adoption.id, shelter_user.id, (CURRENT_DATE + 7), 'pendiente',
        'Seguimiento ficticio de demostración.', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
   FROM adopciones adoption
   JOIN mascotas pet ON pet.id = adoption.mascota_id
-  JOIN users shelter_user ON shelter_user.email = 'demo-refugio@petlink.invalid'
- WHERE pet.codigo_identificacion = 'DEMO-PL-SQL-004'
+  JOIN users shelter_user ON shelter_user.email = 'refugio@petlink.test'
+ WHERE pet.codigo_identificacion = 'DEMO-PL-PUBLIC-004'
    AND NOT EXISTS (
        SELECT 1 FROM seguimientos_adopcion existing
         WHERE existing.adopcion_id = adoption.id
-          AND existing.fecha_programada = DATE '2026-11-09'
+          AND existing.observaciones = 'Seguimiento ficticio de demostración.'
    );
 
 INSERT INTO citas_veterinarias (
     mascota_id, veterinario_id, solicitada_por, programada_en, duracion_minutos,
     estado, motivo, created_at, updated_at
 )
-SELECT pet.id, veterinarian.id, adopter.id, TIMESTAMPTZ '2026-11-04 10:00:00-05',
+SELECT pet.id, veterinarian.id, adopter.id, ((CURRENT_DATE + 2 + TIME '10:00') AT TIME ZONE 'America/Bogota'),
        30, 'confirmada', 'Control preventivo ficticio de demostración.',
        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
   FROM mascotas pet
   JOIN veterinarios veterinarian ON true
   JOIN users vet_user ON vet_user.id = veterinarian.usuario_id
-  JOIN users adopter ON adopter.email = 'demo-adoptante@petlink.invalid'
- WHERE pet.codigo_identificacion = 'DEMO-PL-SQL-001'
-   AND vet_user.email = 'demo-veterinario@petlink.invalid'
+  JOIN users adopter ON adopter.email = 'adoptante@petlink.test'
+ WHERE pet.codigo_identificacion = 'DEMO-PL-PUBLIC-001'
+   AND vet_user.email = 'veterinario@petlink.test'
    AND NOT EXISTS (
        SELECT 1 FROM citas_veterinarias existing
         WHERE existing.mascota_id = pet.id
           AND existing.veterinario_id = veterinarian.id
           AND existing.solicitada_por = adopter.id
-          AND existing.programada_en = TIMESTAMPTZ '2026-11-04 10:00:00-05'
+          AND existing.motivo = 'Control preventivo ficticio de demostración.'
    );
 
 INSERT INTO historial_medico (
     mascota_id, registrado_por, veterinario_id, tipo, fecha_registro, titulo,
     descripcion, created_at, updated_at
 )
-SELECT pet.id, vet_user.id, veterinarian.id, 'consulta', DATE '2026-11-02',
+SELECT pet.id, vet_user.id, veterinarian.id, 'consulta', CURRENT_DATE,
        'Control preventivo demo',
        'Registro clínico ficticio para mostrar un historial de atención.',
        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
   FROM mascotas pet
   JOIN veterinarios veterinarian ON true
   JOIN users vet_user ON vet_user.id = veterinarian.usuario_id
- WHERE pet.codigo_identificacion = 'DEMO-PL-SQL-001'
-   AND vet_user.email = 'demo-veterinario@petlink.invalid'
+ WHERE pet.codigo_identificacion = 'DEMO-PL-PUBLIC-001'
+   AND vet_user.email = 'veterinario@petlink.test'
    AND NOT EXISTS (
        SELECT 1 FROM historial_medico existing
         WHERE existing.mascota_id = pet.id
@@ -721,15 +773,15 @@ INSERT INTO mascota_vacuna (
     mascota_id, vacuna_id, veterinario_id, aplicada_en, refuerzo_en, lote,
     observaciones, created_at, updated_at
 )
-SELECT pet.id, vaccine.id, veterinarian.id, DATE '2026-09-02', DATE '2027-07-02',
+SELECT pet.id, vaccine.id, veterinarian.id, (CURRENT_DATE - INTERVAL '2 months')::date, (CURRENT_DATE + INTERVAL '10 months')::date,
        'DEMO-RAB-SQL-01', 'Aplicación ficticia de demostración.',
        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
   FROM mascotas pet
   JOIN vacunas vaccine ON vaccine.nombre = 'Rabia'
   JOIN veterinarios veterinarian ON true
   JOIN users vet_user ON vet_user.id = veterinarian.usuario_id
- WHERE pet.codigo_identificacion = 'DEMO-PL-SQL-001'
-   AND vet_user.email = 'demo-veterinario@petlink.invalid'
+ WHERE pet.codigo_identificacion = 'DEMO-PL-PUBLIC-001'
+   AND vet_user.email = 'veterinario@petlink.test'
    AND NOT EXISTS (
        SELECT 1 FROM mascota_vacuna existing
         WHERE existing.mascota_id = pet.id
@@ -744,10 +796,10 @@ INSERT INTO donaciones (
 )
 SELECT adopter.id, shelter.id, 'dinero', 25000,
        'Aporte ficticio de demostración PetLink', 'registrada',
-       TIMESTAMPTZ '2026-11-02 12:00:00-05', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+       ((CURRENT_DATE + TIME '12:00') AT TIME ZONE 'America/Bogota'), CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
   FROM users adopter
   JOIN refugios shelter ON shelter.nombre = 'Refugio PetLink Demo'
- WHERE adopter.email = 'demo-adoptante@petlink.invalid'
+ WHERE adopter.email = 'adoptante@petlink.test'
    AND NOT EXISTS (
        SELECT 1 FROM donaciones existing
         WHERE existing.donante_id = adopter.id
@@ -758,24 +810,39 @@ SELECT adopter.id, shelter.id, 'dinero', 25000,
 INSERT INTO asignaciones_hogar (
     hogar_id, mascota_id, asignada_por, inicio, estado, notas, created_at, updated_at
 )
-SELECT home.id, pet.id, shelter_user.id, DATE '2026-10-30', 'activa',
+SELECT home.id, pet.id, shelter_user.id, (CURRENT_DATE - 3), 'activa',
        'Cuidar, alimentar y registrar novedades de forma ficticia.',
        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
   FROM hogares_temporales home
   JOIN users foster_user ON foster_user.id = home.responsable_id
-  JOIN mascotas pet ON pet.codigo_identificacion = 'DEMO-PL-SQL-005'
-  JOIN users shelter_user ON shelter_user.email = 'demo-refugio@petlink.invalid'
- WHERE foster_user.email = 'demo-hogar@petlink.invalid'
+  JOIN mascotas pet ON pet.codigo_identificacion = 'DEMO-PL-PUBLIC-005'
+  JOIN users shelter_user ON shelter_user.email = 'refugio@petlink.test'
+ WHERE foster_user.email = 'hogar@petlink.test'
    AND NOT EXISTS (
        SELECT 1 FROM asignaciones_hogar existing
         WHERE existing.hogar_id = home.id
           AND existing.mascota_id = pet.id
-          AND existing.inicio = DATE '2026-10-30'
+          AND existing.notas = 'Cuidar, alimentar y registrar novedades de forma ficticia.'
    );
 
 COMMIT;
 
 -- Verificación visual después de ejecutar:
--- SELECT nombre FROM roles ORDER BY id;
--- SELECT nombre, codigo_identificacion FROM mascotas ORDER BY codigo_identificacion;
--- SELECT estado, count(*) FROM solicitudes_adopcion GROUP BY estado ORDER BY estado;
+SELECT role_demo.nombre AS rol, user_demo.email, user_demo.activo
+  FROM users user_demo
+  JOIN roles role_demo ON role_demo.id = user_demo.role_id
+ WHERE lower(user_demo.email) IN (
+       'admin@petlink.test', 'adoptante@petlink.test', 'refugio@petlink.test',
+       'veterinario@petlink.test', 'hogar@petlink.test'
+  )
+ ORDER BY role_demo.id;
+
+SELECT 'mascotas' AS modulo, count(*) AS registros FROM mascotas WHERE codigo_identificacion LIKE 'DEMO-PL-PUBLIC-%'
+UNION ALL SELECT 'publicaciones', count(*) FROM publicaciones_adopcion publication JOIN mascotas pet ON pet.id = publication.mascota_id WHERE pet.codigo_identificacion LIKE 'DEMO-PL-PUBLIC-%'
+UNION ALL SELECT 'solicitudes', count(*) FROM solicitudes_adopcion request JOIN publicaciones_adopcion publication ON publication.id = request.publicacion_id JOIN mascotas pet ON pet.id = publication.mascota_id WHERE pet.codigo_identificacion LIKE 'DEMO-PL-PUBLIC-%'
+UNION ALL SELECT 'adopciones', count(*) FROM adopciones adoption JOIN mascotas pet ON pet.id = adoption.mascota_id WHERE pet.codigo_identificacion LIKE 'DEMO-PL-PUBLIC-%'
+UNION ALL SELECT 'citas', count(*) FROM citas_veterinarias appointment JOIN mascotas pet ON pet.id = appointment.mascota_id WHERE pet.codigo_identificacion LIKE 'DEMO-PL-PUBLIC-%'
+UNION ALL SELECT 'historial médico', count(*) FROM historial_medico record JOIN mascotas pet ON pet.id = record.mascota_id WHERE pet.codigo_identificacion LIKE 'DEMO-PL-PUBLIC-%'
+UNION ALL SELECT 'vacunas', count(*) FROM mascota_vacuna vaccine JOIN mascotas pet ON pet.id = vaccine.mascota_id WHERE pet.codigo_identificacion LIKE 'DEMO-PL-PUBLIC-%'
+UNION ALL SELECT 'donaciones', count(*) FROM donaciones donation JOIN refugios shelter ON shelter.id = donation.refugio_id WHERE shelter.nombre = 'Refugio PetLink Demo'
+UNION ALL SELECT 'hogares asignados', count(*) FROM asignaciones_hogar assignment JOIN mascotas pet ON pet.id = assignment.mascota_id WHERE pet.codigo_identificacion LIKE 'DEMO-PL-PUBLIC-%';
