@@ -6,7 +6,7 @@ El diagrama ER con entidades, atributos y marcas de PK/FK está en [diagrama-er.
 
 El enlace del MER de Lucidchart del prompt no fue accesible desde el entorno. Este esquema es una propuesta basada en las entidades funcionales del prompt; no se afirma que replique el diagrama. Debe compararse con el MER original antes de producción.
 
-Hay 21 tablas del dominio original y dos tablas aditivas de soporte (`notifications` y `audit_logs`), además de `personal_access_tokens` de Sanctum y las tablas Laravel.
+Hay 21 tablas de negocio/dominio. PetLink añade `notifications` y `audit_logs` como soporte; Laravel y Sanctum aportan 9 tablas de infraestructura, para 32 tablas declaradas por el SQL de inicialización. Las migraciones y el SQL inicializador documentan los nombres/campos exactos.
 
 ## Entidades
 
@@ -20,7 +20,7 @@ Hay 21 tablas del dominio original y dos tablas aditivas de soporte (`notificati
 | estados_mascota | Catálogo de estados y visibilidad pública. |
 | refugios | Responsable, contacto y dirección; administra mascotas y recibe donaciones. |
 | mascotas | Ficha, especie, raza, estado, responsable y refugio opcional. |
-| fotos_mascota | Varias fotos por mascota; PostgreSQL guarda las rutas, archivos bajo backend/storage/app/public. |
+| fotos_mascota | Varias fotos por mascota; PostgreSQL guarda `ruta`, texto alternativo, indicador principal y orden. En desarrollo los archivos usan el disco local; en el despliegue se guardan en el bucket de Supabase Storage configurado en Laravel. |
 | publicaciones_adopcion | Una publicación por mascota, estado y fechas de publicación/cierre. |
 | solicitudes_adopcion | Une una publicación con un adoptante; no admite duplicados por persona y publicación. |
 | adopciones | Formalización separada de una solicitud aprobada; mascota y solicitud únicas. |
@@ -47,6 +47,19 @@ Hay 21 tablas del dominio original y dos tablas aditivas de soporte (`notificati
 - hogares N:M mascotas mediante asignaciones.
 - veterinarios 1:N citas; mascotas 1:N citas, historial médico y aplicaciones de vacunas.
 - vacunas 1:N aplicaciones; adopciones 1:N seguimientos.
+
+## Normalización y cardinalidades
+
+El esquema separa catálogos y relaciones que se repetirían si se almacenaran como texto o listas en una sola fila:
+
+- **Primera forma normal (1FN):** los campos guardan un dato por columna. Las fotos, solicitudes, citas, vacunaciones, seguimientos y asignaciones se representan en filas propias; no hay columnas con listas de valores.
+- **Segunda forma normal (2FN):** las relaciones con atributos propios usan una entidad asociativa. `asignaciones_hogar` contiene fechas/estado/notas de una acogida; `mascota_vacuna` conserva fecha/lote/refuerzo de una aplicación. Las claves de cada fila determinan sus demás atributos.
+- **Tercera forma normal (3FN):** los datos descriptivos de rol, especie, raza, estado, vacuna y dirección viven en su entidad/catálogo. Por ejemplo, `mascotas.especie_id` relaciona con `especies.id`; el nombre de especie no se repite como atributo libre de cada mascota. Las razas dependen de especie y tienen unicidad por `(especie_id, nombre)`.
+- `users` guarda credenciales y perfil común; `roles` mantiene el nombre de rol una sola vez. Las credenciales son `users.email` y `users.password` (hash), mientras `users.id` y `users.role_id` identifican relaciones.
+- `solicitudes_adopcion` y `adopciones` se separan porque una solicitud puede rechazarse o permanecer en revisión sin convertirse en adopción. `publicaciones_adopcion` también se separa de `mascotas` para guardar su propio estado y fechas.
+- Una publicación pertenece a una mascota (`UNIQUE publicaciones_adopcion.mascota_id`); una adopción formalizada apunta de forma única a solicitud y mascota; un usuario tiene un rol (`users.role_id`), perfil veterinario opcional 1:1 y hogar temporal opcional 1:1.
+
+Las claves únicas, FK y reglas `CHECK` complementan estas separaciones. Para las columnas concretas, consulta las migraciones y el SQL; el diagrama ER representa las relaciones principales.
 
 ## Claves primarias y foráneas verificadas en las migraciones
 

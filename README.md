@@ -4,7 +4,7 @@ PetLink conecta personas adoptantes con refugios y responsables de mascotas en C
 
 ## Estado
 
-La aplicación usa una API Laravel y un cliente React independiente. PostgreSQL es el único motor configurado. Este equipo tiene PostgreSQL 18 en localhost:5432; psql.exe está instalado pero no está en PATH. PHP tiene la DLL `pdo_pgsql`, pero no la carga por defecto. Al habilitarla solo para la ejecución de PHPUnit, el servidor rechazó la contraseña local del usuario `petlink` al conectar con la base de pruebas `petlink_test`; no se modificaron credenciales ni datos.
+La aplicación usa una API Laravel y un cliente React independiente. PostgreSQL es el único motor configurado. En la última verificación, Vercel respondió HTTP 200 y Render reportó `database: connected`; el catálogo público aún devuelve cero mascotas porque el SQL de demostración no se ha ejecutado en Supabase. El PHP de esta estación no carga `pdo_pgsql`, por lo que las pruebas que usan PostgreSQL no alcanzan sus aserciones.
 
 El enlace de Lucidchart del prompt no fue accesible. El esquema es una propuesta inicial basada en las entidades sugeridas y debe compararse con el MER antes de usar PetLink con datos reales.
 
@@ -18,7 +18,11 @@ El enlace de Lucidchart del prompt no fue accesible. El esquema es una propuesta
 - frontend/: interfaz React en español.
 - docs/modelo-datos.md y docs/api.md: esquema y rutas propuestas.
 - docs/diagrama-er.md y docs/entrega-segundo-parcial.md: ER visual, arquitectura por capas y mapa de módulos/roles.
+- docs/matriz-rubrica.md: índice de evidencias y estado de cada requisito del parcial.
+- docs/operaciones-crud.md: operaciones, rutas, tablas, roles y reglas de integridad.
+- docs/consultas-verificacion.sql: consultas de solo lectura para revisar los datos demo.
 - docs/supabase-inicializacion.sql: esquema reproducible y datos sintéticos de demostración; no contiene una copia de la base desplegada.
+- docs/backup-postgres-pgadmin.md: pasos para producir/restaurar el backup real solicitado.
 - docker-compose.yml: PostgreSQL opcional para desarrollo local.
 
 Herramientas detectadas: PHP 8.2.12, Composer 2.8.12, Node 24.11.1, npm 11.6.2, Docker CLI 29.7.2 y servicio PostgreSQL 18. El cliente psql.exe existe, pero su carpeta no está en PATH; Docker Desktop/daemon no está activo.

@@ -11,8 +11,8 @@ Base local: http://127.0.0.1:8000/api. La API devuelve JSON. Rutas privadas usan
 | Mascotas | POST /mascotas, GET /mis-mascotas, PUT/DELETE /mascotas/{id}, POST /mascotas/{id}/fotos, PATCH /mascotas/{id}/fotos/{foto}/principal, DELETE /mascotas/{id}/fotos/{foto} |
 | Publicaciones | POST /mascotas/{id}/publicaciones, PUT/DELETE /publicaciones/{id} |
 | Adopción | POST /publicaciones/{id}/solicitudes, GET /mis-solicitudes, DELETE /solicitudes/{id} (solo solicitud propia pendiente), GET /solicitudes/para-revisar, PATCH /solicitudes/{id}, POST /solicitudes/{id}/formalizar, GET /adopciones |
-| Administración y reportes | GET /panel, GET /usuarios, PATCH /usuarios/{id}, GET /roles, GET /auditoria (administrador), GET /reportes/resumen.csv (administrador/refugio), POST/PATCH /catalogos/especies, POST/PATCH /catalogos/razas, PATCH /catalogos/estados-mascota/{id}, POST /vacunas |
-| Veterinaria | GET/POST /citas, PATCH /citas/{id}, GET /mascotas/{id}/historial-medico, POST /historial-medico, GET /catalogos/vacunas, POST /vacunas, POST /vacunaciones, POST /veterinarios |
+| Administración y reportes | GET /panel, GET /usuarios, PATCH /usuarios/{id}, GET /roles, GET /auditoria (administrador), GET /reportes/resumen.csv (administrador/refugio), POST/PATCH /catalogos/especies, POST/PATCH /catalogos/razas, PATCH /catalogos/estados-mascota/{id}, POST /vacunas (administrador) |
+| Veterinaria | GET/POST /citas, PATCH /citas/{id}, GET /mascotas/{id}/historial-medico, POST /historial-medico, GET /catalogos/vacunas, POST /vacunaciones, POST /veterinarios (administrador) |
 | Hogares | GET/POST /hogar-temporal, GET /hogares-temporales, GET/POST /asignaciones-hogar, PATCH /asignaciones-hogar/{id}/finalizar |
 | Donaciones y seguimiento | GET/POST /donaciones, GET /seguimientos, POST /adopciones/{id}/seguimientos, PATCH /seguimientos/{id} |
 
