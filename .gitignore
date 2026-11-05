@@ -16,6 +16,11 @@ frontend/dist/
 frontend/.vite/
 *.log
 *.sqlite
+*.backup
+*.dump
+*.dump.gz
+.pgpass
+private-backups/
 .DS_Store
 Thumbs.db
 

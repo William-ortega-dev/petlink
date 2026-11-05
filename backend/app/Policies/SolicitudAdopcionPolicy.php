@@ -26,5 +26,10 @@ class SolicitudAdopcionPolicy
         $pet = $solicitud->publicacion?->mascota;
         return $user->isRole('Refugio') && $pet?->responsable_id === $user->id;
     }
+
+    public function withdraw(User $user, SolicitudAdopcion $solicitud): bool
+    {
+        return $user->isRole('Adoptante') && $solicitud->adoptante_id === $user->id;
+    }
 }
 

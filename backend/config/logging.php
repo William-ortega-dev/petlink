@@ -18,7 +18,9 @@ return [
     |
     */
 
-    'default' => env('LOG_CHANNEL', 'stack'),
+    // Render collects container stderr; keep production exceptions visible in
+    // its private service logs without enabling APP_DEBUG in HTTP responses.
+    'default' => env('LOG_CHANNEL', env('APP_ENV') === 'production' ? 'stderr' : 'stack'),
 
     /*
     |--------------------------------------------------------------------------

@@ -6,9 +6,12 @@ use App\Http\Controllers\Controller;
 use App\Models\Direccion;
 use App\Models\Role;
 use App\Models\User;
+use Illuminate\Auth\Events\PasswordReset;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Password as PasswordBroker;
+use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rules\Password;
 use Illuminate\Validation\ValidationException;
@@ -49,6 +52,36 @@ class AuthController extends Controller
         }
 
         return $this->tokenResponse($user);
+    }
+
+    public function sendPasswordResetLink(Request $request)
+    {
+        $data = $request->validate(['email' => ['required', 'email:rfc', 'max:255']]);
+        PasswordBroker::sendResetLink(['email' => mb_strtolower($data['email'])]);
+
+        return response()->json(['message' => 'Si el correo está registrado, recibirás instrucciones para restablecer la contraseña.']);
+    }
+
+    public function resetPassword(Request $request)
+    {
+        $data = $request->validate([
+            'token' => ['required', 'string'],
+            'email' => ['required', 'email:rfc', 'max:255'],
+            'password' => ['required', 'confirmed', Password::min(10)->letters()->numbers()],
+        ]);
+        $data['email'] = mb_strtolower($data['email']);
+
+        $status = PasswordBroker::reset($data, function (User $user, string $password) {
+            $user->forceFill(['password' => $password, 'remember_token' => Str::random(60)])->save();
+            $user->tokens()->delete();
+            event(new PasswordReset($user));
+        });
+
+        if ($status !== PasswordBroker::PASSWORD_RESET) {
+            throw ValidationException::withMessages(['email' => [__($status)]]);
+        }
+
+        return response()->json(['message' => 'Contraseña restablecida. Ya puedes iniciar sesión.']);
     }
 
     public function logout(Request $request)

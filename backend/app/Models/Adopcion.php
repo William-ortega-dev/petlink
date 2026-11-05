@@ -6,6 +6,8 @@ use Illuminate\Database\Eloquent\Model;
 
 class Adopcion extends Model
 {
+    protected $table = 'public.adopciones';
+
     protected $fillable = ['solicitud_id', 'mascota_id', 'adoptante_id', 'formalizada_por', 'fecha_adopcion', 'estado', 'observaciones'];
     protected function casts(): array { return ['fecha_adopcion' => 'date']; }
     public function solicitud() { return $this->belongsTo(SolicitudAdopcion::class, 'solicitud_id'); }

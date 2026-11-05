@@ -32,7 +32,7 @@ class MascotaPolicy
 
     public function delete(User $user, Mascota $mascota): bool
     {
-        return $user->isAdministrator() && ! $mascota->adopcion()->exists();
+        return $user->isAdministrator() || ($user->isRole('Refugio') && $mascota->responsable_id === $user->id);
     }
 }
 
