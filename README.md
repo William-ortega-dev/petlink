@@ -131,7 +131,7 @@ npm run lint
 npm run build
 ~~~
 
-Verificación del 4 de noviembre de 2026: `npm run lint` y `npm run build` pasan. `php artisan test` ejecuta 29 pruebas: 5 pasan y las 24 de integración no alcanzan sus aserciones porque este PHP no tiene el controlador `pdo_pgsql` (`could not find driver`) para `petlink_test`. La prueba `DemoAccountSeedTest` confirma que los hashes SQL coinciden con las cinco contraseñas que rellena el formulario. En producción, `/api/health` responde PostgreSQL conectado; `/api/mascotas` devuelve cero registros y el login de Adoptante devuelve HTTP 422. Ejecuta una vez el SQL de inicialización en el Supabase conectado a Render y repite la verificación de catálogo/login.
+Verificación de publicación del 4 de noviembre de 2026 (hora Colombia): `npm run lint` y `npm run build` pasan. La última suite local registrada ejecutó 29 pruebas: 5 pasan y las 24 de integración no alcanzan sus aserciones porque este PHP no tiene el controlador `pdo_pgsql` (`could not find driver`) para `petlink_test`. `DemoAccountSeedTest` comprueba que los hashes SQL coinciden con las contraseñas documentadas. Tras cargar el SQL de demostración y corregir los nombres de tablas Eloquent, en producción `/api/health` respondió HTTP 200 con PostgreSQL conectado, `/api/mascotas?per_page=5` devolvió 3 mascotas disponibles y las cinco cuentas iniciaron sesión con sus paneles correspondientes (HTTP 200). El panel de administrador mostró 1 adopción y 25.000 COP en donaciones.
 
 ## Cuentas demo locales y de presentación
 
