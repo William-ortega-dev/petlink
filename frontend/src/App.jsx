@@ -313,7 +313,15 @@ function AuthPage({ mode }) {
       if (isRegister) await register(form)
       else await login({ email: form.email, password: form.password })
       navigate('/panel')
-    } catch (err) { setError(messageFromError(err)) } finally { setBusy(false) }
+    } catch (err) {
+      const credentialsAreFromDemoPicker = PUBLIC_DEMO_MODE && Object.values(DEMO_ACCOUNTS)
+        .some((account) => account.email === form.email && account.password === form.password)
+      const demoLoginWasRejected = [401, 422].includes(err?.response?.status)
+
+      setError(credentialsAreFromDemoPicker && demoLoginWasRejected
+        ? 'No se pudo validar la cuenta demo. Confirma que docs/supabase-inicializacion.sql se haya ejecutado en la base PostgreSQL conectada a esta API.'
+        : messageFromError(err))
+    } finally { setBusy(false) }
   }
   return <main className="container auth-layout">
     <div className="auth-aside"><span className="eyebrow">PetLink</span><h1>{PUBLIC_DEMO_MODE ? 'Presentación académica.' : isRegister ? 'Un nuevo comienzo empieza aquí.' : 'Qué bueno verte de nuevo.'}</h1><p>{PUBLIC_DEMO_MODE ? 'Explora los cinco roles conectados a la API y PostgreSQL.' : isRegister ? 'Crea tu cuenta para iniciar un proceso de adopción responsable y seguir cada paso.' : 'Inicia sesión para consultar tus solicitudes y continuar tu historia.'}</p><div className="auth-paw">🐾</div></div>

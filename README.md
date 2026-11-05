@@ -4,7 +4,7 @@ PetLink conecta personas adoptantes con refugios y responsables de mascotas en C
 
 ## Estado
 
-La aplicación usa una API Laravel y un cliente React independiente. PostgreSQL es el único motor configurado. En la última verificación, Vercel respondió HTTP 200 y Render reportó `database: connected`; el catálogo público aún devuelve cero mascotas porque el SQL de demostración no se ha ejecutado en Supabase. El PHP de esta estación no carga `pdo_pgsql`, por lo que las pruebas que usan PostgreSQL no alcanzan sus aserciones.
+La aplicación usa una API Laravel y un cliente React independiente. PostgreSQL es el único motor configurado. En la última verificación, Vercel respondió HTTP 200 y Render reportó `database: connected`; el catálogo público devuelve cero mascotas y las cuentas demo son rechazadas porque el inicializador no se ha ejecutado en la base conectada. El PHP de esta estación no carga `pdo_pgsql`, por lo que las pruebas que usan PostgreSQL no alcanzan sus aserciones.
 
 El enlace de Lucidchart del prompt no fue accesible. El esquema es una propuesta inicial basada en las entidades sugeridas y debe compararse con el MER antes de usar PetLink con datos reales.
 
@@ -131,7 +131,7 @@ npm run lint
 npm run build
 ~~~
 
-Verificación actual: `npm run lint` y `npm run build` pasan; también compilé con `VITE_DEMO_MODE=true` para revisar el selector público. `php artisan test` ejecuta 28 pruebas: 4 pasan y 24 no llegan a sus aserciones porque este PHP no tiene el controlador `pdo_pgsql` (`could not find driver`) para `petlink_test`. La base desplegada responde `/api/health` con PostgreSQL conectado, pero el catálogo aún devuelve cero mascotas. No pude ejecutar el SQL de inicialización contra la instancia Supabase desde este entorno; hazlo una vez desde Supabase SQL Editor y luego repite la verificación de catálogo/login.
+Verificación del 4 de noviembre de 2026: `npm run lint` y `npm run build` pasan. `php artisan test` ejecuta 29 pruebas: 5 pasan y las 24 de integración no alcanzan sus aserciones porque este PHP no tiene el controlador `pdo_pgsql` (`could not find driver`) para `petlink_test`. La prueba `DemoAccountSeedTest` confirma que los hashes SQL coinciden con las cinco contraseñas que rellena el formulario. En producción, `/api/health` responde PostgreSQL conectado; `/api/mascotas` devuelve cero registros y el login de Adoptante devuelve HTTP 422. Ejecuta una vez el SQL de inicialización en el Supabase conectado a Render y repite la verificación de catálogo/login.
 
 ## Cuentas demo locales y de presentación
 

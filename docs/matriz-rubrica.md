@@ -19,7 +19,7 @@ Esta guía ubica la evidencia de cada requisito del segundo parcial en los archi
 | Endpoints y permisos | [api.md](api.md). | Disponible; las rutas privadas requieren token Sanctum y aplican permisos del servidor. |
 | Instalación y ejecución | [README.md](../README.md) incluye requisitos, PostgreSQL, backend, frontend y pruebas. | Disponible. |
 | Backup real PostgreSQL | [backup-postgres-pgadmin.md](backup-postgres-pgadmin.md) explica cómo exportarlo y restaurarlo. | Archivo `.backup` pendiente: requiere exportar desde la instancia del estudiante; el repositorio no contiene una copia del servidor. |
-| Pruebas | `backend/tests/` cubre autenticación, autorización, adopción, perfiles, citas, fotografías y reportes; ESLint/build comprueban frontend. | En la última ejecución: 4 pruebas PHP pasaron y 24 no arrancaron porque falta el driver `pdo_pgsql` en este entorno. `npm run lint` y `npm run build` pasaron. |
+| Pruebas | `backend/tests/` cubre autenticación, autorización, adopción, perfiles, citas, fotografías, reportes y consistencia de hashes de las cinco cuentas demo; ESLint/build comprueban frontend. | 5 pruebas PHP pasan; 24 pruebas de integración no alcanzan sus aserciones porque falta el driver `pdo_pgsql` en este entorno. `npm run lint` y `npm run build` pasan. |
 | Video de exposición | No se entrega. | Excluido por solicitud expresa del estudiante. |
 
 ## Documentos para entregar
@@ -47,7 +47,8 @@ Esta guía ubica la evidencia de cada requisito del segundo parcial en los archi
 
 - `https://petlink-ten.vercel.app/` respondió HTTP 200 y sirvió el cliente actualizado.
 - `https://petlink-api-sz68.onrender.com/api/health` respondió `database: connected`.
-- `GET /api/mascotas?per_page=3` respondió HTTP 200 con cero registros al 4 de noviembre de 2026. No se afirma que la muestra esté cargada hasta ejecutar el SQL.
+- `GET /api/mascotas?per_page=3` respondió HTTP 200 con cero registros al 4 de noviembre de 2026; el intento de inicio de sesión de Adoptante con la cuenta demo respondió HTTP 422. El SQL de demostración todavía no está cargado en la base conectada.
+- Los hashes del SQL sí corresponden a las cinco contraseñas públicas. Se comprobó con `DemoAccountSeedTest`; el rechazo remoto se debe a que las cuentas/datos aún no existen en esa base, no a una diferencia de contraseña.
 
 ## Alcance de la demostración
 
